@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>wolsales-billing</title>
+    <script>
+      // Redirect to built version if not running in Vite dev server (e.g. opened via Live Server on port 5500)
+      (function() {
+        const isStaticPort = window.location.port === '5500' || window.location.port === '5501';
+        if (isStaticPort && !window.location.pathname.includes('/dist')) {
+          window.location.href = './dist/index.html';
+          return;
+        }
+
+        setTimeout(function() {
+          const isDevHtml = !!document.querySelector('script[src*="main.tsx"]');
+          if (isDevHtml) {
+            const isViteActive = !!document.querySelector('script[src*="@vite"]') || 
+                                 window.__vite_plugin_react_preamble_installed__ ||
+                                 typeof window.__vite_plugin_react_preamble_installed__ !== 'undefined';
+            if (!isViteActive) {
+              console.log("Static server detected, redirecting to built app...");
+              window.location.href = './dist/index.html';
+            }
+          }
+        }, 50);
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-BnMTEi-i.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cl_kebsO.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
