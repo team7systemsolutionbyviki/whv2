@@ -138,6 +138,8 @@ export const Reports: React.FC = () => {
     }, 0);
   }, 0);
 
+  const totalBagsSold = filteredSales.reduce((sum, s) => sum + s.items.reduce((acc, item) => acc + (item.bags || 0), 0), 0);
+
   const profitMarginPercent = totalSalesRevenue > 0 ? (netProfit / totalSalesRevenue) * 100 : 0;
 
   // Calculations for Purchases Report Summaries
@@ -485,7 +487,7 @@ export const Reports: React.FC = () => {
         </div>
 
         {/* Report Summary stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
           {(activeReport === 'sales' || activeReport === 'sales_profit') && (
             <>
               <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
@@ -503,6 +505,10 @@ export const Reports: React.FC = () => {
               <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
                 <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Net Profit</span>
                 <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'green' }}>₹{netProfit.toFixed(2)}</div>
+              </div>
+              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Total Bags Sold</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{totalBagsSold} Bags</div>
               </div>
             </>
           )}
@@ -1041,6 +1047,10 @@ export const Reports: React.FC = () => {
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Net Profit Earned</span>
               <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--success)' }}>₹{netProfit.toFixed(2)}</h3>
             </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--primary)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Bags Sold</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--primary)' }}>{totalBagsSold} Bags</h3>
+            </div>
           </div>
 
           {/* Details Table */}
@@ -1221,6 +1231,10 @@ export const Reports: React.FC = () => {
               <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--warning)' }}>
                 {profitMarginPercent.toFixed(1)}%
               </h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--primary)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Bags Sold</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--primary)' }}>{totalBagsSold} Bags</h3>
             </div>
           </div>
 
