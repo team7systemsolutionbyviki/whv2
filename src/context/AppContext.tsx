@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransaction, SaleItem, ProductVariation } from '../utils/db';
+import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransaction, SaleItem, ProductVariation, SupplierPayment } from '../utils/db';
 import { rtdb, isMockMode } from '../utils/firebase';
 import { ref, onValue } from 'firebase/database';
 
@@ -11,6 +11,8 @@ export interface CartItem {
   customPrice?: number; // for wholesale custom prices or overrides
   customUnit?: string; // for custom/modified cart item units
   variation?: ProductVariation;
+  customWeight?: number; // for custom weight overrides in KG
+  bags?: number; // manually inputted number of bags
 }
 
 export interface HeldCart {
@@ -39,6 +41,7 @@ interface AppContextType {
   products: Product[];
   dealers: Dealer[];
   suppliers: Supplier[];
+  supplierPayments: SupplierPayment[];
   sales: Sale[];
   purchases: Purchase[];
   stockHistory: StockTransaction[];
@@ -52,6 +55,8 @@ interface AppContextType {
   updateRetailQty: (productId: string, qty: number, variationId?: string) => void;
   updateRetailPrice: (productId: string, price: number, variationId?: string) => void;
   updateRetailUnit: (productId: string, unit: string, variationId?: string) => void;
+  updateRetailWeight: (productId: string, weight: number, variationId?: string) => void;
+  updateRetailBags: (productId: string, bags: number, variationId?: string) => void;
   clearRetailCart: () => void;
   retailDiscount: number; // flat discount
   setRetailDiscount: (disc: number) => void;
@@ -69,6 +74,8 @@ interface AppContextType {
   updateWholesaleQty: (productId: string, qty: number, variationId?: string) => void;
   updateWholesalePrice: (productId: string, price: number, variationId?: string) => void;
   updateWholesaleUnit: (productId: string, unit: string, variationId?: string) => void;
+  updateWholesaleWeight: (productId: string, weight: number, variationId?: string) => void;
+  updateWholesaleBags: (productId: string, bags: number, variationId?: string) => void;
   clearWholesaleCart: () => void;
   wholesaleDiscount: number;
   setWholesaleDiscount: (disc: number) => void;
@@ -96,6 +103,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [products, setProducts] = useState<Product[]>([]);
   const [dealers, setDealers] = useState<Dealer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [stockHistory, setStockHistory] = useState<StockTransaction[]>([]);
@@ -133,6 +141,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { key: 'billing_purchases', path: 'purchases', defaultValue: [] },
         { key: 'billing_stock_history', path: 'stock_history', defaultValue: [] },
         { key: 'billing_settings', path: 'settings', defaultValue: null },
+        { key: 'billing_supplier_payments', path: 'supplier_payments', defaultValue: [] },
         { key: 'login_history', path: 'login_history', defaultValue: [] },
         { key: 'app_users', path: 'app_users', defaultValue: [] },
       ];
@@ -203,6 +212,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setProducts(DB.getProducts());
     setDealers(DB.getDealers());
     setSuppliers(DB.getSuppliers());
+    setSupplierPayments(DB.getSupplierPayments());
     setSales(DB.getSales());
     setPurchases(DB.getPurchases());
     setStockHistory(DB.getStockHistory());
@@ -272,6 +282,102 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         const updated = [...prev];
         updated[idx].qty = qty;
+        updated[idx].customWeight = undefined; // clear weight override on manual qty edit
+        return updated;
+      }
+      return prev;
+    });
+  };
+
+  const updateRetailWeight = (productId: string, weight: number, variationId?: string) => {
+    if (weight < 0) return;
+    setRetailCart((prev) => {
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      if (idx >= 0) {
+        const updated = [...prev];
+        const item = updated[idx];
+        item.customWeight = weight;
+        
+        const unit = (item.customUnit || item.variation?.unit || item.product.unit || '').toLowerCase().trim();
+        let unitWeight = 0;
+        if (unit === 'kg') {
+          unitWeight = 1;
+        } else if (unit === 'gram' || unit === 'g' || unit === 'gm') {
+          unitWeight = 0.001;
+        } else {
+          const nameToSearch = `${item.product.name} ${item.variation?.mark || ''}`.toLowerCase();
+          const weightRegex = /(\d+(?:\.\d+)?)\s*(kg|g|gm|grams|l|litre|litres|ml)\b/i;
+          const match = nameToSearch.match(weightRegex);
+          if (match) {
+            const value = parseFloat(match[1]);
+            const parsedUnit = match[2].toLowerCase();
+            if (parsedUnit === 'kg' || parsedUnit === 'l' || parsedUnit === 'litre' || parsedUnit.startsWith('litre')) {
+              unitWeight = value;
+            } else {
+              unitWeight = value / 1000;
+            }
+          }
+        }
+        
+        if (unitWeight > 0) {
+          const newQty = Number((weight / unitWeight).toFixed(3));
+          const prod = item.product;
+          const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
+          if (newQty > stockLimit) {
+            showToast(`Warning: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}`, 'warning');
+          }
+          item.qty = newQty;
+        }
+        
+        return updated;
+      }
+      return prev;
+    });
+  };
+
+  const updateRetailBags = (productId: string, bags: number, variationId?: string) => {
+    if (bags < 0) return;
+    setRetailCart((prev) => {
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      if (idx >= 0) {
+        const updated = [...prev];
+        const item = updated[idx];
+        item.bags = bags;
+        
+        const unit = (item.customUnit || item.variation?.unit || item.product.unit || '').toLowerCase().trim();
+        let unitWeight = 0;
+        if (unit === 'kg') {
+          unitWeight = 1;
+        } else if (unit === 'gram' || unit === 'g' || unit === 'gm') {
+          unitWeight = 0.001;
+        } else {
+          const nameToSearch = `${item.product.name} ${item.variation?.mark || ''}`.toLowerCase();
+          const weightRegex = /(\d+(?:\.\d+)?)\s*(kg|g|gm|grams|l|litre|litres|ml)\b/i;
+          const match = nameToSearch.match(weightRegex);
+          if (match) {
+            const value = parseFloat(match[1]);
+            const parsedUnit = match[2].toLowerCase();
+            if (parsedUnit === 'kg' || parsedUnit === 'l' || parsedUnit === 'litre' || parsedUnit.startsWith('litre')) {
+              unitWeight = value;
+            } else {
+              unitWeight = value / 1000;
+            }
+          }
+        }
+        
+        if (unitWeight > 0) {
+          const calculatedWeight = bags * unitWeight;
+          item.customWeight = calculatedWeight;
+          
+          const newQty = Number((calculatedWeight / unitWeight).toFixed(3));
+          const prod = item.product;
+          const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
+          if (newQty > stockLimit) {
+            showToast(`Warning: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}`, 'warning');
+          }
+          item.qty = newQty;
+        }
+        
         return updated;
       }
       return prev;
@@ -335,6 +441,92 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx].qty = qty;
+        updated[idx].customWeight = undefined; // clear override on manual qty edit
+        return updated;
+      }
+      return prev;
+    });
+  };
+
+  const updateWholesaleWeight = (productId: string, weight: number, variationId?: string) => {
+    if (weight < 0) return;
+    setWholesaleCart((prev) => {
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      if (idx >= 0) {
+        const updated = [...prev];
+        const item = updated[idx];
+        item.customWeight = weight;
+        
+        const unit = (item.customUnit || item.variation?.unit || item.product.unit || '').toLowerCase().trim();
+        let unitWeight = 0;
+        if (unit === 'kg') {
+          unitWeight = 1;
+        } else if (unit === 'gram' || unit === 'g' || unit === 'gm') {
+          unitWeight = 0.001;
+        } else {
+          const nameToSearch = `${item.product.name} ${item.variation?.mark || ''}`.toLowerCase();
+          const weightRegex = /(\d+(?:\.\d+)?)\s*(kg|g|gm|grams|l|litre|litres|ml)\b/i;
+          const match = nameToSearch.match(weightRegex);
+          if (match) {
+            const value = parseFloat(match[1]);
+            const parsedUnit = match[2].toLowerCase();
+            if (parsedUnit === 'kg' || parsedUnit === 'l' || parsedUnit === 'litre' || parsedUnit.startsWith('litre')) {
+              unitWeight = value;
+            } else {
+              unitWeight = value / 1000;
+            }
+          }
+        }
+        
+        if (unitWeight > 0) {
+          const newQty = Number((weight / unitWeight).toFixed(3));
+          item.qty = newQty;
+        }
+        
+        return updated;
+      }
+      return prev;
+    });
+  };
+
+  const updateWholesaleBags = (productId: string, bags: number, variationId?: string) => {
+    if (bags < 0) return;
+    setWholesaleCart((prev) => {
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      if (idx >= 0) {
+        const updated = [...prev];
+        const item = updated[idx];
+        item.bags = bags;
+        
+        const unit = (item.customUnit || item.variation?.unit || item.product.unit || '').toLowerCase().trim();
+        let unitWeight = 0;
+        if (unit === 'kg') {
+          unitWeight = 1;
+        } else if (unit === 'gram' || unit === 'g' || unit === 'gm') {
+          unitWeight = 0.001;
+        } else {
+          const nameToSearch = `${item.product.name} ${item.variation?.mark || ''}`.toLowerCase();
+          const weightRegex = /(\d+(?:\.\d+)?)\s*(kg|g|gm|grams|l|litre|litres|ml)\b/i;
+          const match = nameToSearch.match(weightRegex);
+          if (match) {
+            const value = parseFloat(match[1]);
+            const parsedUnit = match[2].toLowerCase();
+            if (parsedUnit === 'kg' || parsedUnit === 'l' || parsedUnit === 'litre' || parsedUnit.startsWith('litre')) {
+              unitWeight = value;
+            } else {
+              unitWeight = value / 1000;
+            }
+          }
+        }
+        
+        if (unitWeight > 0) {
+          const calculatedWeight = bags * unitWeight;
+          item.customWeight = calculatedWeight;
+          
+          const newQty = Number((calculatedWeight / unitWeight).toFixed(3));
+          item.qty = newQty;
+        }
+        
         return updated;
       }
       return prev;
@@ -432,6 +624,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         products,
         dealers,
         suppliers,
+        supplierPayments,
         sales,
         purchases,
         stockHistory,
@@ -444,6 +637,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateRetailQty,
         updateRetailPrice,
         updateRetailUnit,
+        updateRetailWeight,
+        updateRetailBags,
         clearRetailCart,
         retailDiscount,
         setRetailDiscount,
@@ -460,6 +655,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateWholesaleQty,
         updateWholesalePrice,
         updateWholesaleUnit,
+        updateWholesaleWeight,
+        updateWholesaleBags,
         clearWholesaleCart,
         wholesaleDiscount,
         setWholesaleDiscount,

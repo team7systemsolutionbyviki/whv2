@@ -25,6 +25,7 @@ export const Purchases: React.FC = () => {
     suppliers, 
     purchases,
     sales,
+    supplierPayments,
     refreshData, 
     showToast,
     settings 
@@ -36,7 +37,7 @@ export const Purchases: React.FC = () => {
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
-  const [purchaseItems, setPurchaseItems] = useState<{ product: Product; qty: number; purchasePrice: number; unit: string; variation?: ProductVariation }[]>([]);
+  const [purchaseItems, setPurchaseItems] = useState<{ product: Product; qty: number; purchasePrice: number; unit: string; variation?: ProductVariation; bags?: number }[]>([]);
   const [paymentStatus, setPaymentStatus] = useState<'Paid' | 'Due'>('Paid');
   const [discount, setDiscount] = useState<number>(0);
   const [coolie, setCoolie] = useState<number>(0);
@@ -44,6 +45,12 @@ export const Purchases: React.FC = () => {
   // Vehicle & Delivery details
   const [vehicleNo, setVehicleNo] = useState('');
   const [deliveryPersonPhone, setDeliveryPersonPhone] = useState('');
+
+  const formatPurchaseUnit = (unitStr: string) => {
+    const u = (unitStr || '').toLowerCase().trim();
+    if (u === 'bag' || u === 'bags') return 'KG';
+    return unitStr || 'Pcs';
+  };
 
   // History & Print details
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
@@ -78,6 +85,7 @@ export const Purchases: React.FC = () => {
   const [tempUnit, setTempUnit] = useState('');
   const [tempQty, setTempQty] = useState<number>(1);
   const [tempPrice, setTempPrice] = useState<number>(0);
+  const [tempBags, setTempBags] = useState<number>(0);
 
   // Supplier Management states
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
@@ -97,6 +105,7 @@ export const Purchases: React.FC = () => {
   const [isPayDuesOpen, setIsPayDuesOpen] = useState(false);
   const [payAmount, setPayAmount] = useState<number>(0);
   const [paySupplier, setPaySupplier] = useState<Supplier | null>(null);
+  const [payNote, setPayNote] = useState('');
 
   // Handle adding item to the current builder list
   const handleAddItemToList = () => {
@@ -131,9 +140,12 @@ export const Purchases: React.FC = () => {
       const updated = [...purchaseItems];
       updated[existsIdx].qty += tempQty;
       updated[existsIdx].purchasePrice = tempPrice; // update with latest entered price
+      if (tempBags > 0) {
+        updated[existsIdx].bags = (updated[existsIdx].bags || 0) + tempBags;
+      }
       setPurchaseItems(updated);
     } else {
-      setPurchaseItems(prev => [...prev, { product, qty: tempQty, purchasePrice: tempPrice, unit: tempUnit, variation }]);
+      setPurchaseItems(prev => [...prev, { product, qty: tempQty, purchasePrice: tempPrice, unit: tempUnit, variation, bags: tempBags || undefined }]);
     }
 
     // Reset selectors
@@ -142,6 +154,7 @@ export const Purchases: React.FC = () => {
     setTempUnit('');
     setTempQty(1);
     setTempPrice(0);
+    setTempBags(0);
     showToast('Product added to entry list', 'success');
   };
 
@@ -221,7 +234,8 @@ export const Purchases: React.FC = () => {
         purchasePrice: item.purchasePrice,
         total: item.purchasePrice * item.qty,
         variationId: item.variation?.id,
-        variationMark: item.variation?.mark
+        variationMark: item.variation?.mark,
+        bags: item.bags
       })),
       subtotal,
       discount,
@@ -279,10 +293,21 @@ export const Purchases: React.FC = () => {
       return;
     }
 
+    // Record the payment settlement first
+    const paymentData = {
+      id: 'PAY-' + Date.now() + Math.random().toString(36).substr(2, 4),
+      supplierId: paySupplier.id,
+      date: new Date().toISOString(),
+      amount: payAmount,
+      referenceNo: payNote.trim() || undefined
+    };
+
+    DB.saveSupplierPayment(paymentData);
     DB.updateSupplierDue(paySupplier.id, -payAmount);
     refreshData();
     setIsPayDuesOpen(false);
     setPayAmount(0);
+    setPayNote('');
     setPaySupplier(null);
     showToast('Payment logged and supplier due reduced', 'success');
 
@@ -333,7 +358,13 @@ export const Purchases: React.FC = () => {
   const totalPurchaseCost = supplierPurchases.reduce((sum, p) => sum + p.total, 0);
   const totalStockPurchased = supplierPurchases.reduce((sum, p) => sum + p.items.reduce((itemSum, item) => itemSum + item.qty, 0), 0);
   const balanceDues = selectedLedgerSupplier ? selectedLedgerSupplier.due : 0;
-  const totalPaidAmount = Math.max(0, totalPurchaseCost - balanceDues);
+
+  const allSupplierPayments = selectedLedgerSupplier
+    ? supplierPayments.filter(pm => pm.supplierId === selectedLedgerSupplier.id)
+    : [];
+
+  const totalPaidAmount = supplierPurchases.reduce((sum, p) => sum + (p.paymentStatus === 'Paid' ? p.total : 0), 0) +
+                          allSupplierPayments.filter(pm => ledgerDateMatch(pm.date)).reduce((sum, pm) => sum + pm.amount, 0);
 
   // Sales Profitability Analysis
   const supplierAllProductIds = selectedLedgerSupplier
@@ -394,9 +425,23 @@ export const Purchases: React.FC = () => {
     });
   });
 
-  // Unified chronological timeline for Stock In (Purchases) and Stock Out (Sales)
-  const unifiedTransactions = [
-    ...supplierPurchases.map(p => ({
+  // Calculate Running Balance over ALL time (unfiltered by date) to ensure correct running balance, then filter for display
+  const allSupplierPurchases = selectedLedgerSupplier
+    ? DB.getPurchases().filter(p => p.supplierId === selectedLedgerSupplier.id)
+    : [];
+
+  const allSupplierSales = selectedLedgerSupplier
+    ? sales
+        .filter(s => s.status === 'completed')
+        .map(s => ({
+          ...s,
+          items: s.items.filter(item => supplierAllProductIds.has(item.productId))
+        }))
+        .filter(s => s.items.length > 0)
+    : [];
+
+  const rawTimeline = [
+    ...allSupplierPurchases.map(p => ({
       id: p.id,
       type: 'in' as const,
       date: p.date,
@@ -409,15 +454,37 @@ export const Purchases: React.FC = () => {
         qty: item.qty,
         unit: item.unit,
         price: item.purchasePrice,
-        total: item.total
+        total: item.total,
+        bags: item.bags
       })),
       discount: p.discount || 0,
       coolie: p.coolie || 0,
       subtotal: p.subtotal || p.total,
       totalAmount: p.total,
-      status: p.paymentStatus
+      status: p.paymentStatus,
+      due: p.total,
+      paid: p.paymentStatus === 'Paid' ? p.total : 0,
+      particulars: `Purchase Invoice (${p.paymentStatus})`
     })),
-    ...supplierProductSales.map(s => ({
+    ...allSupplierPayments.map(pm => ({
+      id: pm.id,
+      type: 'payment' as const,
+      date: pm.date,
+      refNo: pm.referenceNo || 'N/A',
+      vehicleNo: undefined as string | undefined,
+      deliveryPersonPhone: undefined as string | undefined,
+      customerName: undefined as string | undefined,
+      items: [] as any[],
+      discount: 0,
+      coolie: 0,
+      subtotal: 0,
+      totalAmount: pm.amount,
+      status: 'Paid',
+      due: 0,
+      paid: pm.amount,
+      particulars: `Payment Settlement`
+    })),
+    ...allSupplierSales.map(s => ({
       id: s.id,
       type: 'out' as const,
       date: s.date,
@@ -432,7 +499,8 @@ export const Purchases: React.FC = () => {
           qty: item.qty,
           unit: item.unit,
           price: item.salesPrice,
-          total: item.total - itemDiscount
+          total: item.total - itemDiscount,
+          bags: item.bags
         };
       }),
       discount: s.discount || 0,
@@ -442,15 +510,42 @@ export const Purchases: React.FC = () => {
         const itemDiscount = s.subtotal > 0 ? (item.total / s.subtotal) * s.discount : 0;
         return acc + (item.total - itemDiscount);
       }, 0),
-      status: 'Paid'
+      status: 'Paid',
+      due: 0,
+      paid: 0,
+      particulars: `Stock Out (Sale to Customer)`
     }))
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  ];
 
-  const filteredTransactions = unifiedTransactions.filter(t => {
-    if (ledgerStockFilter === 'in') return t.type === 'in';
-    if (ledgerStockFilter === 'out') return t.type === 'out';
-    return true;
+  // Sort chronologically (oldest first) to calculate running balance
+  rawTimeline.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  let runningDueSum = 0;
+  const timelineWithBalance = rawTimeline.map(t => {
+    if (t.type === 'in') {
+      if (t.status === 'Due') {
+        runningDueSum += t.due;
+      }
+    } else if (t.type === 'payment') {
+      runningDueSum -= t.paid;
+    }
+    return {
+      ...t,
+      runningBalance: runningDueSum
+    };
   });
+
+  // Filter transactions for current view list
+  const unifiedTransactions = timelineWithBalance
+    .filter(t => ledgerDateMatch(t.date))
+    .filter(t => {
+      if (ledgerStockFilter === 'in') return t.type === 'in';
+      if (ledgerStockFilter === 'out') return t.type === 'out';
+      return true;
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const filteredTransactions = unifiedTransactions;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -503,7 +598,7 @@ export const Purchases: React.FC = () => {
               return (
                 <div style={{ 
                   display: 'grid', 
-                  gridTemplateColumns: hasVariations ? '1.2fr 1fr 0.8fr 0.8fr 0.8fr 50px' : '1.5fr 1fr 1fr 1fr 50px', 
+                  gridTemplateColumns: hasVariations ? '1.2fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr 50px' : '1.5fr 1fr 1fr 0.8fr 0.8fr 50px', 
                   gap: '0.5rem', 
                   alignItems: 'end' 
                 }}>
@@ -576,6 +671,18 @@ export const Purchases: React.FC = () => {
                     />
                   </div>
 
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>Bags</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min="0"
+                      value={tempBags || ''}
+                      placeholder="-"
+                      onChange={(e) => setTempBags(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+
                   <button
                     type="button"
                     className="btn btn-primary"
@@ -598,6 +705,7 @@ export const Purchases: React.FC = () => {
                       <tr>
                         <th>Product</th>
                         <th style={{ textAlign: 'right' }}>Cost Price</th>
+                        <th style={{ textAlign: 'center' }}>Bags</th>
                         <th style={{ textAlign: 'center' }}>Qty</th>
                         <th style={{ textAlign: 'right' }}>Total</th>
                         <th style={{ textAlign: 'center' }}>Remove</th>
@@ -615,7 +723,8 @@ export const Purchases: React.FC = () => {
                             )}
                           </td>
                           <td style={{ textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
-                          <td style={{ textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {item.unit}</td>
+                          <td style={{ textAlign: 'center' }}>{item.bags || '-'}</td>
+                          <td style={{ textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {formatPurchaseUnit(item.unit)}</td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{(item.purchasePrice * item.qty).toFixed(2)}</td>
                           <td style={{ textAlign: 'center' }}>
                             <button
@@ -1015,71 +1124,114 @@ export const Purchases: React.FC = () => {
                         <table className="custom-table" style={{ fontSize: '0.8rem' }}>
                           <thead>
                             <tr>
-                              <th style={{ paddingLeft: '1rem' }}>Description / Items</th>
-                              <th style={{ width: '80px', textAlign: 'right' }}>Price</th>
-                              <th style={{ width: '90px', textAlign: 'center' }}>Qty</th>
-                              <th style={{ width: '100px', textAlign: 'right' }}>Total Cost</th>
+                              <th style={{ paddingLeft: '0.75rem', width: '100px' }}>Date</th>
+                              <th>Particulars / Details</th>
+                              <th style={{ width: '120px' }}>Ref / Invoice</th>
+                              <th style={{ width: '100px', textAlign: 'right' }}>Due (+₹)</th>
+                              <th style={{ width: '100px', textAlign: 'right' }}>Paid (-₹)</th>
+                              <th style={{ width: '120px', textAlign: 'right', paddingRight: '1rem' }}>Balance (₹)</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredTransactions.map(t => (
-                              <React.Fragment key={`${t.type}-${t.id}`}>
-                                {/* Group Header Row */}
-                                <tr style={{ background: t.type === 'in' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)', fontWeight: 600 }}>
-                                  <td colSpan={4} style={{ padding: '0.6rem 1rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <div>
-                                        <span style={{ color: 'var(--text-primary)', marginRight: '1rem' }}>📅 {new Date(t.date).toLocaleDateString()}</span>
-                                        <span style={{ color: 'var(--text-secondary)' }}>Invoice: <strong style={{ color: 'var(--primary)' }}>{t.refNo}</strong></span>
-                                        {t.customerName && <span style={{ marginLeft: '1rem', color: 'var(--text-secondary)' }}>Customer: <strong>{t.customerName}</strong></span>}
-                                      </div>
-                                      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                                        {t.vehicleNo && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>🚚 {t.vehicleNo}</span>}
-                                        {t.deliveryPersonPhone && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>📞 {t.deliveryPersonPhone}</span>}
-                                        <span className="badge" style={{ 
-                                          fontSize: '0.65rem',
-                                          background: t.type === 'in' ? 'var(--success-light)' : 'var(--warning-light)',
-                                          color: t.type === 'in' ? 'var(--success)' : 'var(--warning)',
-                                          border: t.type === 'in' ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(245,158,11,0.2)',
-                                          fontWeight: 700
-                                        }}>
-                                          {t.type === 'in' ? '📥 STOCK IN' : '📤 STOCK OUT'}
-                                        </span>
-                                        <span className={`badge ${t.status === 'Due' ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.65rem' }}>
-                                          {t.status.toUpperCase()}
-                                        </span>
-                                        <span style={{ color: t.type === 'in' ? 'var(--success)' : 'var(--primary)', fontWeight: 700 }}>₹{t.totalAmount.toFixed(2)}</span>
-                                      </div>
+                            {filteredTransactions.map(t => {
+                              let borderLeftColor = 'var(--border-color)';
+                              let rowBg = 'transparent';
+                              let badgeColor = 'var(--text-secondary)';
+                              let badgeBg = 'var(--bg-input)';
+                              let typeLabel = '';
+
+                              if (t.type === 'in') {
+                                borderLeftColor = t.status === 'Due' ? 'var(--danger)' : 'var(--success)';
+                                rowBg = t.status === 'Due' ? 'rgba(239, 68, 68, 0.02)' : 'rgba(16, 185, 129, 0.02)';
+                                badgeColor = t.status === 'Due' ? 'var(--danger)' : 'var(--success)';
+                                badgeBg = t.status === 'Due' ? 'var(--danger-light)' : 'var(--success-light)';
+                                typeLabel = '📥 Purchase';
+                              } else if (t.type === 'payment') {
+                                borderLeftColor = 'var(--primary)';
+                                rowBg = 'rgba(99, 102, 241, 0.04)';
+                                badgeColor = 'var(--primary)';
+                                badgeBg = 'var(--primary-light)';
+                                typeLabel = '💳 Payment';
+                              } else if (t.type === 'out') {
+                                borderLeftColor = 'var(--warning)';
+                                rowBg = 'rgba(245, 158, 11, 0.02)';
+                                badgeColor = 'var(--warning)';
+                                badgeBg = 'var(--warning-light)';
+                                typeLabel = '📤 Stock Out';
+                              }
+
+                              return (
+                                <tr 
+                                  key={`${t.type}-${t.id}`} 
+                                  style={{ 
+                                    borderLeft: `4px solid ${borderLeftColor}`,
+                                    background: rowBg,
+                                    borderBottom: '1px solid var(--border-color)'
+                                  }}
+                                >
+                                  <td style={{ paddingLeft: '0.75rem', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                                    📅 {new Date(t.date).toLocaleDateString()}
+                                  </td>
+                                  <td style={{ verticalAlign: 'top' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                      <span 
+                                        className="badge" 
+                                        style={{ 
+                                          fontSize: '0.65rem', 
+                                          background: badgeBg, 
+                                          color: badgeColor,
+                                          fontWeight: 700 
+                                        }}
+                                      >
+                                        {typeLabel}
+                                      </span>
+                                      <strong>
+                                        {t.type === 'in' && `Purchase Invoice`}
+                                        {t.type === 'payment' && `Dues Settlement`}
+                                        {t.type === 'out' && `Sales Stock Out`}
+                                      </strong>
+                                      {t.customerName && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}> (Customer: {t.customerName})</span>}
                                     </div>
+                                    
+                                    {t.type === 'payment' ? (
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', paddingLeft: '0.5rem' }}>
+                                        {t.refNo && t.refNo !== 'N/A' ? `Reference/Note: ${t.refNo}` : 'Settled outstanding dues'}
+                                      </div>
+                                    ) : (
+                                      <div style={{ marginTop: '0.25rem', paddingLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                        {t.items.map((item: any, idx: number) => (
+                                          <div key={idx} style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                                            <span>• {item.name}</span>
+                                            <span style={{ color: 'var(--text-muted)' }}>
+                                              ({Number(item.qty.toFixed(3))} {formatPurchaseUnit(item.unit)} @ ₹{item.price.toFixed(2)})
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {t.type === 'in' && (t.discount > 0 || t.coolie > 0) && (
+                                          <div style={{ fontStyle: 'italic', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                                            Subtotal: ₹{t.subtotal.toFixed(2)}
+                                            {t.discount > 0 && ` | Discount: -₹${t.discount.toFixed(2)}`}
+                                            {t.coolie > 0 && ` | Coolie: +₹${t.coolie.toFixed(2)}`}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ verticalAlign: 'top', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                                    {t.refNo}
+                                  </td>
+                                  <td style={{ verticalAlign: 'top', textAlign: 'right', fontWeight: 600 }}>
+                                    {t.type === 'in' ? `₹${t.due.toFixed(2)}` : '₹0.00'}
+                                  </td>
+                                  <td style={{ verticalAlign: 'top', textAlign: 'right', fontWeight: 600, color: t.paid > 0 ? 'var(--success)' : 'inherit' }}>
+                                    {t.paid > 0 ? `₹${t.paid.toFixed(2)}` : '₹0.00'}
+                                  </td>
+                                  <td style={{ verticalAlign: 'top', textAlign: 'right', fontWeight: 700, paddingRight: '1rem', color: t.runningBalance > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                                    ₹{t.runningBalance.toFixed(2)}
                                   </td>
                                 </tr>
-                                {/* Item Rows */}
-                                {t.items.map((item, itemIdx) => (
-                                  <tr key={`${t.type}-${t.id}-item-${itemIdx}`} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.03)' }}>
-                                    <td style={{ paddingLeft: '1.5rem', fontWeight: 500 }}>
-                                      {item.name}
-                                    </td>
-                                    <td style={{ textAlign: 'right' }}>₹{item.price.toFixed(2)}</td>
-                                    <td style={{ textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {item.unit}</td>
-                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{item.total.toFixed(2)}</td>
-                                  </tr>
-                                ))}
-                                {/* Summary Row for Discount & Coolie */}
-                                {(t.discount > 0 || t.coolie > 0) && (
-                                  <tr style={{ background: 'rgba(255,255,255,0.01)', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                    <td colSpan={2} style={{ paddingLeft: '1.5rem', fontStyle: 'italic' }}>
-                                      Subtotal: ₹{t.subtotal.toFixed(2)}
-                                    </td>
-                                    <td colSpan={2} style={{ textAlign: 'right', paddingRight: '1rem' }}>
-                                      <div style={{ display: 'inline-flex', gap: '1rem' }}>
-                                        {t.discount > 0 && <span style={{ color: 'var(--danger)' }}>Discount: -₹{t.discount.toFixed(2)}</span>}
-                                        {t.coolie > 0 && <span style={{ color: 'var(--info)' }}>Coolie: +₹{t.coolie.toFixed(2)}</span>}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </React.Fragment>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -1333,7 +1485,8 @@ export const Purchases: React.FC = () => {
                     <thead>
                       <tr style={{ background: '#f3f4f6' }}>
                         <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '40px', textAlign: 'center' }}>S.No</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'left' }}>Item Description</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db' }}>Item Description</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '60px', textAlign: 'center' }}>Bags</th>
                         <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '80px', textAlign: 'center' }}>Qty</th>
                         <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '90px', textAlign: 'right' }}>Cost Price (₹)</th>
                         <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '110px', textAlign: 'right' }}>Total (₹)</th>
@@ -1344,7 +1497,8 @@ export const Purchases: React.FC = () => {
                         <tr key={idx}>
                           <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'center' }}>{idx + 1}</td>
                           <td style={{ padding: '6px', border: '1px solid #d1d5db' }}>{item.name}</td>
-                          <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {item.unit}</td>
+                          <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'center' }}>{item.bags || '-'}</td>
+                          <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {formatPurchaseUnit(item.unit)}</td>
                           <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'right' }}>{item.purchasePrice.toFixed(2)}</td>
                           <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'right' }}>{item.total.toFixed(2)}</td>
                         </tr>
@@ -1432,6 +1586,7 @@ export const Purchases: React.FC = () => {
               <tr style={{ borderBottom: '1px solid #000', borderTop: '1px solid #000' }}>
                 <th style={{ padding: '4px', textAlign: 'center', width: '30px' }}>S.No</th>
                 <th style={{ padding: '4px', textAlign: 'left' }}>Item Description</th>
+                <th style={{ padding: '4px', textAlign: 'center', width: '60px' }}>Bags</th>
                 <th style={{ padding: '4px', textAlign: 'center', width: '80px' }}>Qty</th>
                 <th style={{ padding: '4px', textAlign: 'right', width: '90px' }}>Cost Price</th>
                 <th style={{ padding: '4px', textAlign: 'right', width: '110px' }}>Total</th>
@@ -1442,7 +1597,8 @@ export const Purchases: React.FC = () => {
                 <tr key={idx} style={{ borderBottom: '1px dashed #ccc' }}>
                   <td style={{ padding: '4px', textAlign: 'center' }}>{idx + 1}</td>
                   <td style={{ padding: '4px' }}>{item.name}</td>
-                  <td style={{ padding: '4px', textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {item.unit}</td>
+                  <td style={{ padding: '4px', textAlign: 'center' }}>{item.bags || '-'}</td>
+                  <td style={{ padding: '4px', textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {formatPurchaseUnit(item.unit)}</td>
                   <td style={{ padding: '4px', textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
                   <td style={{ padding: '4px', textAlign: 'right' }}>₹{item.total.toFixed(2)}</td>
                 </tr>
@@ -1514,65 +1670,69 @@ export const Purchases: React.FC = () => {
                 </div>
               </div>
 
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginBottom: '1rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px', marginBottom: '1rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: '2px solid #000', borderTop: '2px solid #000' }}>
-                    <th style={{ padding: '6px', textAlign: 'left', width: '90px' }}>Date</th>
-                    <th style={{ padding: '6px', textAlign: 'left', width: '100px' }}>Invoice No</th>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Item Description / Details</th>
-                    <th style={{ padding: '6px', textAlign: 'center', width: '85px' }}>Qty / Unit</th>
-                    <th style={{ padding: '6px', textAlign: 'right', width: '110px' }}>Total (₹)</th>
+                  <tr style={{ borderBottom: '2px solid #000', borderTop: '2px solid #000', fontWeight: 'bold' }}>
+                    <th style={{ padding: '6px', textAlign: 'left', width: '80px' }}>Date</th>
+                    <th style={{ padding: '6px', textAlign: 'left' }}>Particulars / Items</th>
+                    <th style={{ padding: '6px', textAlign: 'left', width: '90px' }}>Ref No / Inv</th>
+                    <th style={{ padding: '6px', textAlign: 'right', width: '90px' }}>Due (+₹)</th>
+                    <th style={{ padding: '6px', textAlign: 'right', width: '90px' }}>Paid (-₹)</th>
+                    <th style={{ padding: '6px', textAlign: 'right', width: '100px' }}>Balance (₹)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredTransactions.map((t) => (
-                    <React.Fragment key={`${t.type}-${t.id}`}>
-                      <tr style={{ borderTop: '1px solid #000', fontWeight: 'bold', background: '#f5f5f5' }}>
-                        <td style={{ padding: '6px' }}>{new Date(t.date).toLocaleDateString()}</td>
-                        <td style={{ padding: '6px' }}>{t.refNo}</td>
-                        <td style={{ padding: '6px' }}>
-                          <span style={{ marginRight: '10px', fontSize: '9px', fontWeight: 'bold', color: t.type === 'in' ? 'green' : 'orange' }}>
-                            {t.type === 'in' ? '📥 IN' : '📤 OUT'}
-                          </span>
-                          <span className={`badge ${t.status === 'Due' ? 'badge-danger' : 'badge-success'}`} style={{ marginRight: '10px', fontSize: '9px' }}>
-                            {t.status.toUpperCase()}
-                          </span>
-                          {t.vehicleNo && <span style={{ marginRight: '10px' }}>🚚 {t.vehicleNo}</span>}
-                          {t.deliveryPersonPhone && <span>📞 {t.deliveryPersonPhone}</span>}
-                          {t.customerName && <span>👤 {t.customerName}</span>}
-                        </td>
-                        <td style={{ padding: '6px' }}></td>
-                        <td style={{ padding: '6px', textAlign: 'right', color: t.type === 'in' ? 'green' : 'black' }}>₹{t.totalAmount.toFixed(2)}</td>
-                      </tr>
-                      {t.items.map((item, idx) => (
-                        <tr key={`${t.type}-${t.id}-item-${idx}`} style={{ borderBottom: '1px dashed #ccc' }}>
-                          <td></td>
-                          <td></td>
-                          <td style={{ padding: '4px 6px', color: '#555' }}>
-                            {item.name} @ ₹{item.price.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '4px 6px', textAlign: 'center', color: '#555' }}>
-                            {Number(item.qty.toFixed(3))} {item.unit}
-                          </td>
-                          <td style={{ padding: '4px 6px', textAlign: 'right', color: '#555' }}>
-                            ₹{item.total.toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                      {(t.discount > 0 || t.coolie > 0) && (
-                        <tr style={{ borderBottom: '1px dashed #ccc', fontSize: '10px', color: '#777' }}>
-                          <td></td>
-                          <td></td>
-                          <td style={{ padding: '4px 6px', fontStyle: 'italic' }}>
-                            Invoice Subtotal: ₹{t.subtotal.toFixed(2)}
-                          </td>
-                          <td colSpan={2} style={{ padding: '4px 6px', textAlign: 'right' }}>
-                            {t.discount > 0 && <span style={{ marginRight: '10px' }}>Discount: -₹{t.discount.toFixed(2)}</span>}
-                            {t.coolie > 0 && <span>Coolie: +₹{t.coolie.toFixed(2)}</span>}
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
+                    <tr 
+                      key={`${t.type}-${t.id}`} 
+                      style={{ 
+                        borderBottom: '1px solid #ccc',
+                        background: t.type === 'payment' ? '#f0f4f8' : 'transparent'
+                      }}
+                    >
+                      <td style={{ padding: '6px', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                        {new Date(t.date).toLocaleDateString()}
+                      </td>
+                      <td style={{ padding: '6px', verticalAlign: 'top' }}>
+                        <div style={{ fontWeight: 'bold' }}>
+                          {t.type === 'in' && `📥 Purchase Invoice (${t.status})`}
+                          {t.type === 'payment' && `💳 Payment Settlement`}
+                          {t.type === 'out' && `📤 Sales Stock Out`}
+                        </div>
+                        {t.type === 'payment' ? (
+                          <div style={{ fontSize: '9px', color: '#555', marginTop: '2px' }}>
+                            {t.refNo && t.refNo !== 'N/A' ? `Note: ${t.refNo}` : 'Settled outstanding dues'}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '9px', color: '#555', marginTop: '2px' }}>
+                            {t.items.map((item, idx) => (
+                              <div key={idx}>
+                                • {item.name} ({Number(item.qty.toFixed(3))} {formatPurchaseUnit(item.unit)} @ ₹{item.price.toFixed(2)})
+                              </div>
+                            ))}
+                            {t.type === 'in' && (t.discount > 0 || t.coolie > 0) && (
+                              <div style={{ fontStyle: 'italic', color: '#777', fontSize: '8.5px', marginTop: '1px' }}>
+                                Subtotal: ₹{t.subtotal.toFixed(2)}
+                                {t.discount > 0 && ` | Discount: -₹${t.discount.toFixed(2)}`}
+                                {t.coolie > 0 && ` | Coolie: +₹${t.coolie.toFixed(2)}`}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '6px', verticalAlign: 'top', fontFamily: 'monospace' }}>
+                        {t.refNo}
+                      </td>
+                      <td style={{ padding: '6px', verticalAlign: 'top', textAlign: 'right' }}>
+                        {t.type === 'in' ? `₹${t.due.toFixed(2)}` : '₹0.00'}
+                      </td>
+                      <td style={{ padding: '6px', verticalAlign: 'top', textAlign: 'right', color: t.paid > 0 ? 'green' : 'black' }}>
+                        {t.paid > 0 ? `₹${t.paid.toFixed(2)}` : '₹0.00'}
+                      </td>
+                      <td style={{ padding: '6px', verticalAlign: 'top', textAlign: 'right', fontWeight: 'bold' }}>
+                        ₹{t.runningBalance.toFixed(2)}
+                      </td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -1749,6 +1909,17 @@ export const Purchases: React.FC = () => {
                     max={paySupplier?.due}
                     value={payAmount || ''}
                     onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Payment Reference / Note (Optional)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Cash, GPay UPI, Check #104"
+                    value={payNote}
+                    onChange={(e) => setPayNote(e.target.value)}
                   />
                 </div>
               </div>

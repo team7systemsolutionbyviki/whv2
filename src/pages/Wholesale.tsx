@@ -17,6 +17,7 @@ import {
   X
 } from 'lucide-react';
 import { PrintPreviewModal } from '../components/PrintPreviewModal';
+import { getCartItemWeightInKg } from '../utils/weight';
 
 export const Wholesale: React.FC = () => {
   const { user } = useAuth();
@@ -31,6 +32,8 @@ export const Wholesale: React.FC = () => {
     updateWholesaleQty,
     updateWholesalePrice,
     updateWholesaleUnit,
+    updateWholesaleWeight,
+    updateWholesaleBags,
     clearWholesaleCart,
     wholesaleDiscount,
     setWholesaleDiscount,
@@ -107,11 +110,24 @@ export const Wholesale: React.FC = () => {
     return baseWholesale;
   };
 
+  const isPricePerKg = (item: CartItem): boolean => {
+    const baseUnit = (item.variation?.unit || item.product.unit || '').toLowerCase().trim();
+    return baseUnit === 'kg';
+  };
+
+  const getCartItemTotal = (item: CartItem): number => {
+    const price = getEffectivePrice(item);
+    if (isPricePerKg(item)) {
+      return price * getCartItemWeightInKg(item);
+    }
+    return price * item.qty;
+  };
+
   // Wholesale cart calculations
   const cartSubtotal = wholesaleCart.reduce((sum, item) => {
-    const price = getEffectivePrice(item);
-    return sum + (price * item.qty);
+    return sum + getCartItemTotal(item);
   }, 0);
+  const cartTotalWeight = wholesaleCart.reduce((sum, item) => sum + getCartItemWeightInKg(item), 0);
   
   const cartTotal = Math.max(0, cartSubtotal - wholesaleDiscount);
   const cartTax = Number((cartTotal * (settings.taxRate / (100 + settings.taxRate))).toFixed(2));
@@ -122,9 +138,11 @@ export const Wholesale: React.FC = () => {
          ? (item.variation.purchasePrice2 || item.variation.purchasePrice) 
          : item.variation.purchasePrice)
       : item.product.purchasePrice;
-    const cost = purchasePrice * item.qty;
+    const cost = isPricePerKg(item)
+      ? purchasePrice * getCartItemWeightInKg(item)
+      : purchasePrice * item.qty;
     const price = getEffectivePrice(item);
-    const revenue = price * item.qty;
+    const revenue = getCartItemTotal(item);
     const itemDiscount = cartSubtotal > 0 ? (revenue / cartSubtotal) * wholesaleDiscount : 0;
     return sum + (revenue - cost - itemDiscount);
   }, 0);
@@ -191,9 +209,11 @@ export const Wholesale: React.FC = () => {
           unit: item.customUnit || item.product.unit,
           purchasePrice,
           salesPrice: price,
-          total: price * item.qty,
+          total: getCartItemTotal(item),
           variationId: item.variation?.id,
-          variationMark: item.variation?.mark
+          variationMark: item.variation?.mark,
+          weight: getCartItemWeightInKg(item),
+          bags: item.bags
         };
       }),
       subtotal: cartSubtotal,
@@ -445,6 +465,7 @@ export const Wholesale: React.FC = () => {
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Item Name</th>
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Mark</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center' }}>Unit</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'center', width: '60px' }}>Bag</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center' }}>Qty</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right', width: '90px' }}>Price (₹)</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right' }}>Total (₹)</th>
@@ -454,6 +475,7 @@ export const Wholesale: React.FC = () => {
                   <tbody>
                     {wholesaleCart.map((item) => {
                       const currentItemUnit = item.customUnit || (item.variation ? (item.variation.unit || item.product.unit) : item.product.unit);
+                      const itemWeight = getCartItemWeightInKg(item);
                       const defaultWhPrice = getWholesaleDefaultPrice(item.product, item.variation, currentItemUnit);
                       const isBulk = item.qty >= 10;
                       const activePrice = getEffectivePrice(item);
@@ -496,6 +518,30 @@ export const Wholesale: React.FC = () => {
                                 <option key={u} value={u}>{u}</option>
                               ))}
                             </select>
+                          </td>
+                          <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                            <input
+                              type="number"
+                              className="form-control"
+                              style={{
+                                width: '50px',
+                                padding: '0.15rem 0.25rem',
+                                fontSize: '0.8rem',
+                                height: '24px',
+                                textAlign: 'center',
+                                background: 'var(--bg-app)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '4px',
+                                color: 'var(--text-primary)'
+                              }}
+                              value={item.bags === 0 || item.bags === undefined ? '' : item.bags}
+                              min="0"
+                              placeholder="-"
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                updateWholesaleBags(item.product.id, val, item.variation?.id);
+                              }}
+                            />
                           </td>
                           <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'center' }}>
@@ -552,6 +598,7 @@ export const Wholesale: React.FC = () => {
                               </button>
                             </div>
                           </td>
+
                           <td style={{ padding: '0.5rem', textAlign: 'right' }}>
                             <input
                               type="number"
@@ -574,7 +621,7 @@ export const Wholesale: React.FC = () => {
                             />
                           </td>
                           <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 700 }}>
-                            ₹{(activePrice * item.qty).toFixed(2)}
+                            ₹{getCartItemTotal(item).toFixed(2)}
                             {isBulk && (
                               <span style={{ display: 'block', color: 'var(--success)', fontSize: '0.65rem', fontWeight: 600 }}>
                                 -5% Bulk
@@ -608,6 +655,10 @@ export const Wholesale: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                 <span>Wholesale Subtotal:</span>
                 <span style={{ fontWeight: 600 }}>₹{cartSubtotal.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <span>Total Weight:</span>
+                <span style={{ fontWeight: 600 }}>{Number(cartTotalWeight.toFixed(3))} Kg</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
                 <span>Additional Discount (₹):</span>

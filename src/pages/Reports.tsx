@@ -18,6 +18,15 @@ export const Reports: React.FC = () => {
   const { sales, purchases, products, settings, dealers } = useApp();
   const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'stock' | 'mark_wise' | 'staff_wise'>('sales');
 
+  const formatDateTime = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   // Filter States (Apply to Sales and Purchases)
   const [filterType, setFilterType] = useState<'today' | 'week' | 'month' | 'custom'>('today');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
@@ -178,6 +187,7 @@ export const Reports: React.FC = () => {
     let qtySold = 0;
     let salesRevenue = 0;
     let salesCost = 0;
+    let bagsSold = 0;
 
     filteredSales.forEach(sale => {
       sale.items.forEach(saleItem => {
@@ -187,6 +197,7 @@ export const Reports: React.FC = () => {
           qtySold += saleItem.qty;
           salesRevenue += saleItem.total;
           salesCost += saleItem.purchasePrice * saleItem.qty;
+          bagsSold += saleItem.bags || 0;
         }
       });
     });
@@ -198,6 +209,7 @@ export const Reports: React.FC = () => {
     return {
       ...item,
       qtySold,
+      bagsSold,
       salesRevenue,
       salesCost,
       salesProfit: salesRevenue - salesCost,
@@ -292,13 +304,14 @@ export const Reports: React.FC = () => {
     let fileName = '';
 
     if (activeReport === 'sales') {
-      headers = ['Bill Number', 'Customer', 'Date', 'Product', 'Qty Sold', 'Cost Price (INR)', 'Sales Price (INR)', 'Total Profit (INR)', 'Total Bill Value (INR)'];
+      headers = ['Bill Number', 'Customer', 'Date', 'Product', 'Bags', 'Qty Sold', 'Cost Price (INR)', 'Sales Price (INR)', 'Total Profit (INR)', 'Total Bill Value (INR)'];
       rows = filteredSales.flatMap(sale => 
         sale.items.map(item => [
           sale.invoiceNo,
           sale.customerName,
-          new Date(sale.date).toLocaleDateString(),
+          formatDateTime(sale.date),
           item.variationMark && !item.name.includes(item.variationMark) ? `${item.name} (${item.variationMark})` : item.name,
+          (item.bags || 0).toString(),
           item.qty.toString(),
           item.purchasePrice.toFixed(2),
           item.salesPrice.toFixed(2),
@@ -308,13 +321,14 @@ export const Reports: React.FC = () => {
       );
       fileName = `Sales_Ledger_Report_${filterType}.csv`;
     } else if (activeReport === 'purchases') {
-      headers = ['Invoice Number', 'Supplier ID', 'Date', 'Product', 'Qty Bought', 'Unit Price (INR)', 'Total Cost (INR)'];
+      headers = ['Invoice Number', 'Supplier ID', 'Date', 'Product', 'Bags', 'Qty Bought', 'Unit Price (INR)', 'Total Cost (INR)'];
       rows = filteredPurchases.flatMap(pur =>
         pur.items.map(item => [
           pur.invoiceNo,
           pur.supplierId,
-          new Date(pur.date).toLocaleDateString(),
+          formatDateTime(pur.date),
           item.variationMark && !item.name.includes(item.variationMark) ? `${item.name} (${item.variationMark})` : item.name,
+          (item.bags || 0).toString(),
           item.qty.toString(),
           item.purchasePrice.toFixed(2),
           item.total.toFixed(2)
@@ -322,20 +336,22 @@ export const Reports: React.FC = () => {
       );
       fileName = `Purchases_Report_${filterType}.csv`;
     } else if (activeReport === 'sales_profit') {
-      headers = ['Product Name', 'Purchase Cost (INR)', 'Retail Price (INR)', 'Profit Per Item (INR)', 'Quantity Sold', 'Total Net Profit (INR)'];
+      headers = ['Product Name', 'Total Bags', 'Purchase Cost (INR)', 'Retail Price (INR)', 'Profit Per Item (INR)', 'Quantity Sold', 'Total Net Profit (INR)'];
       // Aggregate product totals
-      const agg: { [key: string]: { name: string; cost: number; sale: number; qty: number; variationMark?: string } } = {};
+      const agg: { [key: string]: { name: string; cost: number; sale: number; qty: number; bags: number; variationMark?: string } } = {};
       filteredSales.forEach(sale => {
         sale.items.forEach(item => {
           const key = item.productId + (item.variationId ? '-' + item.variationId : '');
           if (agg[key]) {
             agg[key].qty += item.qty;
+            agg[key].bags += item.bags || 0;
           } else {
             agg[key] = {
               name: item.name,
               cost: item.purchasePrice,
               sale: item.salesPrice,
               qty: item.qty,
+              bags: item.bags || 0,
               variationMark: item.variationMark
             };
           }
@@ -343,6 +359,7 @@ export const Reports: React.FC = () => {
       });
       rows = Object.values(agg).map(item => [
         item.variationMark && !item.name.includes(item.variationMark) ? `${item.name} (${item.variationMark})` : item.name,
+        item.bags.toString(),
         item.cost.toFixed(2),
         item.sale.toFixed(2),
         (item.sale - item.cost).toFixed(2),
@@ -377,7 +394,7 @@ export const Reports: React.FC = () => {
       // Mark Wise Report
       headers = [
         'Product Name', 'Mark', 'Barcode', 'Category', 'Unit', 
-        'Qty Sold', 'Sales Revenue (INR)', 'Sales Cost (INR)', 'Sales Profit/Loss (INR)', 
+        'Bags Sold', 'Qty Sold', 'Sales Revenue (INR)', 'Sales Cost (INR)', 'Sales Profit/Loss (INR)', 
         'Current Stock', 'Stock Cost Value (INR)', 'Stock Retail Value (INR)', 'Stock Potential Profit (INR)', 'Status'
       ];
       rows = markWiseReportItems.map(item => {
@@ -388,6 +405,7 @@ export const Reports: React.FC = () => {
           item.barcode,
           item.category,
           item.unit,
+          item.bagsSold.toString(),
           Number(item.qtySold.toFixed(3)).toString(),
           item.salesRevenue.toFixed(2),
           item.salesCost.toFixed(2),
@@ -649,7 +667,7 @@ export const Reports: React.FC = () => {
                     {idx === 0 ? (
                       <td rowSpan={sale.items.length} style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>
                         {sale.invoiceNo}
-                        <div style={{ fontSize: '8px', color: '#555' }}>{new Date(sale.date).toLocaleDateString()}</div>
+                        <div style={{ fontSize: '8px', color: '#555' }}>{formatDateTime(sale.date)}</div>
                       </td>
                     ) : null}
                     {idx === 0 ? (
@@ -659,6 +677,7 @@ export const Reports: React.FC = () => {
                     ) : null}
                     <td style={{ border: '1px solid #ddd', padding: '6px' }}>
                       {item.variationMark && !item.name.includes(item.variationMark) ? `${item.name} (${item.variationMark})` : item.name}
+                      {item.bags && item.bags > 0 ? ` [${item.bags} Bags]` : ''}
                     </td>
                     <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{item.salesPrice.toFixed(2)}</td>
@@ -679,7 +698,7 @@ export const Reports: React.FC = () => {
                   {idx === 0 ? (
                     <td rowSpan={pur.items.length} style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>
                       {pur.invoiceNo}
-                      <div style={{ fontSize: '8px', color: '#555' }}>{new Date(pur.date).toLocaleDateString()}</div>
+                      <div style={{ fontSize: '8px', color: '#555' }}>{formatDateTime(pur.date)}</div>
                     </td>
                   ) : null}
                   {idx === 0 ? (
@@ -689,6 +708,7 @@ export const Reports: React.FC = () => {
                   ) : null}
                   <td style={{ border: '1px solid #ddd', padding: '6px' }}>
                     {item.variationMark && !item.name.includes(item.variationMark) ? `${item.name} (${item.variationMark})` : item.name}
+                    {item.bags && item.bags > 0 ? ` [${item.bags} Bags]` : ''}
                   </td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{item.qty}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
@@ -702,6 +722,7 @@ export const Reports: React.FC = () => {
                   const key = item.productId + (item.variationId ? '-' + item.variationId : '');
                   if (acc[key]) {
                     acc[key].qty += item.qty;
+                    acc[key].bags += item.bags || 0;
                   } else {
                     acc[key] = {
                       id: key,
@@ -709,12 +730,13 @@ export const Reports: React.FC = () => {
                       cost: item.purchasePrice,
                       sale: item.salesPrice,
                       qty: item.qty,
+                      bags: item.bags || 0,
                       variationMark: item.variationMark
                     };
                   }
                 });
                 return acc;
-              }, {} as { [key: string]: { id: string; name: string; cost: number; sale: number; qty: number; variationMark?: string } })
+              }, {} as { [key: string]: { id: string; name: string; cost: number; sale: number; qty: number; bags: number; variationMark?: string } })
             ).map((aggItem) => {
               const unitProfit = aggItem.sale - aggItem.cost;
               const totalItemProfit = unitProfit * aggItem.qty;
@@ -722,6 +744,7 @@ export const Reports: React.FC = () => {
                 <tr key={aggItem.id}>
                   <td style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>
                     {aggItem.variationMark && !aggItem.name.includes(aggItem.variationMark) ? `${aggItem.name} (${aggItem.variationMark})` : aggItem.name}
+                    {aggItem.bags > 0 ? ` [${aggItem.bags} Bags]` : ''}
                   </td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{aggItem.cost.toFixed(2)}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{aggItem.sale.toFixed(2)}</td>
@@ -757,7 +780,10 @@ export const Reports: React.FC = () => {
                   <td style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>{item.name}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px' }}>{item.variationMark || '-'}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{item.unit}</td>
-                  <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{Number(item.qtySold.toFixed(3))}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
+                    {Number(item.qtySold.toFixed(3))}
+                    {item.bagsSold > 0 ? ` [${item.bagsSold} Bags]` : ''}
+                  </td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{item.salesRevenue.toFixed(2)}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right', color: item.salesProfit >= 0 ? 'green' : 'red' }}>
                     ₹{item.salesProfit.toFixed(2)}
@@ -1044,7 +1070,7 @@ export const Reports: React.FC = () => {
                             {idx === 0 ? (
                               <td rowSpan={sale.items.length} style={{ fontWeight: 600, verticalAlign: 'top' }}>
                                 {sale.invoiceNo}
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(sale.date).toLocaleDateString()}</div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatDateTime(sale.date)}</div>
                               </td>
                             ) : null}
                             {idx === 0 ? (
@@ -1060,6 +1086,11 @@ export const Reports: React.FC = () => {
                               {item.variationMark && (
                                 <span style={{ marginLeft: '0.4rem', fontSize: '0.65rem', padding: '0.05rem 0.25rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '3px' }}>
                                   {item.variationMark}
+                                </span>
+                              )}
+                              {item.bags && item.bags > 0 && (
+                                <span style={{ marginLeft: '0.4rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  [{item.bags} Bags]
                                 </span>
                               )}
                             </td>
@@ -1126,7 +1157,7 @@ export const Reports: React.FC = () => {
                           {idx === 0 ? (
                             <td rowSpan={pur.items.length} style={{ fontWeight: 600, verticalAlign: 'top' }}>
                               {pur.invoiceNo}
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(pur.date).toLocaleDateString()}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatDateTime(pur.date)}</div>
                             </td>
                           ) : null}
                           {idx === 0 ? (
@@ -1142,6 +1173,11 @@ export const Reports: React.FC = () => {
                             {item.variationMark && (
                               <span style={{ marginLeft: '0.4rem', fontSize: '0.65rem', padding: '0.05rem 0.25rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '3px' }}>
                                 {item.variationMark}
+                              </span>
+                            )}
+                            {item.bags && item.bags > 0 && (
+                              <span style={{ marginLeft: '0.4rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                [{item.bags} Bags]
                               </span>
                             )}
                           </td>
@@ -1212,6 +1248,7 @@ export const Reports: React.FC = () => {
                           const key = item.productId + (item.variationId ? '-' + item.variationId : '');
                           if (acc[key]) {
                             acc[key].qty += item.qty;
+                            acc[key].bags += item.bags || 0;
                           } else {
                             acc[key] = {
                               id: key,
@@ -1219,12 +1256,13 @@ export const Reports: React.FC = () => {
                               cost: item.purchasePrice,
                               sale: item.salesPrice,
                               qty: item.qty,
+                              bags: item.bags || 0,
                               variationMark: item.variationMark
                             };
                           }
                         });
                         return acc;
-                      }, {} as { [key: string]: { id: string; name: string; cost: number; sale: number; qty: number; variationMark?: string } })
+                      }, {} as { [key: string]: { id: string; name: string; cost: number; sale: number; qty: number; bags: number; variationMark?: string } })
                     ).map((aggItem) => {
                       const unitProfit = aggItem.sale - aggItem.cost;
                       const totalItemProfit = unitProfit * aggItem.qty;
@@ -1237,6 +1275,11 @@ export const Reports: React.FC = () => {
                             {aggItem.variationMark && (
                               <span style={{ marginLeft: '0.4rem', fontSize: '0.65rem', padding: '0.05rem 0.25rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '3px' }}>
                                 {aggItem.variationMark}
+                              </span>
+                            )}
+                            {aggItem.bags > 0 && (
+                              <span style={{ marginLeft: '0.4rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                [{aggItem.bags} Bags]
                               </span>
                             )}
                           </td>
@@ -1423,7 +1466,14 @@ export const Reports: React.FC = () => {
                         <td style={{ fontFamily: 'Courier New', fontWeight: 600 }}>{item.barcode}</td>
                         <td><span className="badge badge-info">{item.category}</span></td>
                         <td style={{ textAlign: 'center' }}>{item.unit}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{Number(item.qtySold.toFixed(3))}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                          {Number(item.qtySold.toFixed(3))}
+                          {item.bagsSold > 0 && (
+                            <span style={{ marginLeft: '0.4rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              [{item.bagsSold} Bags]
+                            </span>
+                          )}
+                        </td>
                         <td style={{ textAlign: 'right' }}>₹{item.salesRevenue.toFixed(2)}</td>
                         <td style={{ textAlign: 'right', fontWeight: 600, color: item.salesProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                           ₹{item.salesProfit.toFixed(2)}

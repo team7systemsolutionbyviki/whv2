@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { PrintPreviewModal } from '../components/PrintPreviewModal';
+import { getCartItemWeightInKg } from '../utils/weight';
 
 export const POS: React.FC = () => {
   const { user } = useAuth();
@@ -32,6 +33,8 @@ export const POS: React.FC = () => {
     updateRetailQty,
     updateRetailPrice,
     updateRetailUnit,
+    updateRetailWeight,
+    updateRetailBags,
     clearRetailCart,
     retailDiscount,
     setRetailDiscount,
@@ -117,19 +120,33 @@ export const POS: React.FC = () => {
     return item.product.purchasePrice;
   };
 
+  const isPricePerKg = (item: CartItem): boolean => {
+    const baseUnit = (item.variation?.unit || item.product.unit || '').toLowerCase().trim();
+    return baseUnit === 'kg';
+  };
+
+  const getCartItemTotal = (item: CartItem): number => {
+    const price = getCartItemPrice(item);
+    if (isPricePerKg(item)) {
+      return price * getCartItemWeightInKg(item);
+    }
+    return price * item.qty;
+  };
+
   // Calculations
   const cartSubtotal = retailCart.reduce((sum, item) => {
-    const price = getCartItemPrice(item);
-    return sum + (price * item.qty);
+    return sum + getCartItemTotal(item);
   }, 0);
+  const cartTotalWeight = retailCart.reduce((sum, item) => sum + getCartItemWeightInKg(item), 0);
   const taxRateDecimal = settings.taxRate / 100;
   // tax is inclusive
   const cartTax = Number((cartSubtotal * (taxRateDecimal / (1 + taxRateDecimal))).toFixed(2));
   const cartTotal = Math.max(0, cartSubtotal - retailDiscount);
   const totalProfit = retailCart.reduce((sum, item) => {
-    const cost = getCartItemCost(item) * item.qty;
-    const price = getCartItemPrice(item);
-    const revenue = price * item.qty;
+    const cost = isPricePerKg(item)
+      ? getCartItemCost(item) * getCartItemWeightInKg(item)
+      : getCartItemCost(item) * item.qty;
+    const revenue = getCartItemTotal(item);
     // proportional discount adjustment
     const itemDiscount = cartSubtotal > 0 ? (revenue / cartSubtotal) * retailDiscount : 0;
     return sum + (revenue - cost - itemDiscount);
@@ -197,9 +214,11 @@ export const POS: React.FC = () => {
           unit: item.customUnit || item.product.unit,
           purchasePrice,
           salesPrice: price,
-          total: price * item.qty,
+          total: getCartItemTotal(item),
           variationId: item.variation?.id,
-          variationMark: item.variation?.mark
+          variationMark: item.variation?.mark,
+          weight: getCartItemWeightInKg(item),
+          bags: item.bags
         };
       }),
       subtotal: cartSubtotal,
@@ -510,6 +529,7 @@ export const POS: React.FC = () => {
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Item Name</th>
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Mark</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center' }}>Unit</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'center', width: '60px' }}>Bag</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center' }}>Qty</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right', width: '90px' }}>Price (₹)</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right' }}>Total (₹)</th>
@@ -519,6 +539,7 @@ export const POS: React.FC = () => {
                   <tbody>
                     {retailCart.map((item) => {
                       const price = getCartItemPrice(item);
+                      const itemWeight = getCartItemWeightInKg(item);
                       const availableUnits = item.variation 
                         ? Array.from(new Set([item.variation.unit || item.product.unit, item.variation.unit2].filter(Boolean) as string[]))
                         : ['Pcs', 'Kg', 'Litre', 'Box', 'Packet', 'Gram', 'Bag'];
@@ -555,6 +576,30 @@ export const POS: React.FC = () => {
                                 <option key={u} value={u}>{u}</option>
                               ))}
                             </select>
+                          </td>
+                          <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                            <input
+                              type="number"
+                              className="form-control"
+                              style={{
+                                width: '50px',
+                                padding: '0.15rem 0.25rem',
+                                fontSize: '0.8rem',
+                                height: '24px',
+                                textAlign: 'center',
+                                background: 'var(--bg-app)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '4px',
+                                color: 'var(--text-primary)'
+                              }}
+                              value={item.bags === 0 || item.bags === undefined ? '' : item.bags}
+                              min="0"
+                              placeholder="-"
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                updateRetailBags(item.product.id, val, item.variation?.id);
+                              }}
+                            />
                           </td>
                           <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'center' }}>
@@ -611,6 +656,7 @@ export const POS: React.FC = () => {
                               </button>
                             </div>
                           </td>
+
                           <td style={{ padding: '0.5rem', textAlign: 'right' }}>
                             <input
                               type="number"
@@ -633,7 +679,7 @@ export const POS: React.FC = () => {
                             />
                           </td>
                           <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 700 }}>
-                            ₹{(price * item.qty).toFixed(2)}
+                            ₹{getCartItemTotal(item).toFixed(2)}
                           </td>
                           <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                             <button 
@@ -665,6 +711,11 @@ export const POS: React.FC = () => {
               <span style={{ fontWeight: 600 }}>₹{cartSubtotal.toFixed(2)}</span>
             </div>
             
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+              <span>Total Weight:</span>
+              <span style={{ fontWeight: 600 }}>{Number(cartTotalWeight.toFixed(3))} Kg</span>
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
               <span>Flat Discount (₹):</span>
               <input

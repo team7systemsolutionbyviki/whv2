@@ -28,6 +28,17 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
   };
 
   // Helper calculations
+  const formatKGColumn = (item: any) => {
+    if (item.weight && item.weight > 0) {
+      return `${Number(item.weight.toFixed(3))} Kg`;
+    }
+    const unit = (item.unit || '').toLowerCase().trim();
+    if (unit === 'bag' || unit === 'bags') {
+      return `${Number(item.qty.toFixed(3))}`;
+    }
+    return `${Number(item.qty.toFixed(3))} ${item.unit || 'Pcs'}`;
+  };
+
   const calculateTaxable = () => {
     // If tax rate is 18%, taxable = total / 1.18
     const taxRateDecimal = 1 + (settings.taxRate / 100);
@@ -42,6 +53,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
   };
 
   const taxDetails = calculateTaxable();
+
+  const calculateTotalWeight = () => {
+    return sale.items.reduce((sum, item) => sum + (item.weight || 0), 0);
+  };
+
+  const calculateTotalBags = () => {
+    return sale.items.reduce((sum, item) => sum + (item.bags || 0), 0);
+  };
 
   useEffect(() => {
     if (autoPrint) {
@@ -95,7 +114,8 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <tr style={{ background: '#f3f4f6' }}>
                 <th style={{ padding: '8px', border: '1px solid #d1d5db', width: '50px', textAlign: 'center' }}>S.No</th>
                 <th style={{ padding: '8px', border: '1px solid #d1d5db' }}>Product Description</th>
-                <th style={{ padding: '8px', border: '1px solid #d1d5db', width: '80px', textAlign: 'center' }}>Qty</th>
+                <th style={{ padding: '8px', border: '1px solid #d1d5db', width: '80px', textAlign: 'center' }}>Bags</th>
+                <th style={{ padding: '8px', border: '1px solid #d1d5db', width: '100px', textAlign: 'center' }}>KG</th>
                 <th style={{ padding: '8px', border: '1px solid #d1d5db', width: '100px', textAlign: 'right' }}>Price (₹)</th>
                 <th style={{ padding: '8px', border: '1px solid #d1d5db', width: '120px', textAlign: 'right' }}>Total (₹)</th>
               </tr>
@@ -105,7 +125,10 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 <tr key={idx}>
                   <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'center' }}>{idx + 1}</td>
                   <td style={{ padding: '8px', border: '1px solid #d1d5db' }}>{item.name}</td>
-                  <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {item.unit || 'Pcs'}</td>
+                  <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'center' }}>{item.bags || '-'}</td>
+                  <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'center' }}>
+                    {formatKGColumn(item)}
+                  </td>
                   <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'right' }}>{item.salesPrice.toFixed(2)}</td>
                   <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'right' }}>{item.total.toFixed(2)}</td>
                 </tr>
@@ -141,6 +164,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 <div className="print-flex-between">
                   <span>Subtotal:</span>
                   <span>₹{sale.subtotal.toFixed(2)}</span>
+                </div>
+                <div className="print-flex-between">
+                  <span>Total Bags:</span>
+                  <span>{calculateTotalBags()}</span>
+                </div>
+                <div className="print-flex-between">
+                  <span>Total Weight:</span>
+                  <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
                 </div>
                 {sale.discount > 0 && (
                   <div className="print-flex-between" style={{ color: 'red' }}>
@@ -202,16 +233,20 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
           <table>
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', width: '55%' }}>ITEM</th>
-                <th style={{ textAlign: 'center', width: '15%' }}>QTY</th>
-                <th style={{ textAlign: 'right', width: '30%' }}>TOTAL</th>
+                <th style={{ textAlign: 'left', width: '40%' }}>ITEM</th>
+                <th style={{ textAlign: 'center', width: '15%' }}>BAG</th>
+                <th style={{ textAlign: 'center', width: '20%' }}>KG</th>
+                <th style={{ textAlign: 'right', width: '25%' }}>TOTAL</th>
               </tr>
             </thead>
             <tbody>
               {sale.items.map((item, idx) => (
                 <tr key={idx}>
-                  <td style={{ textAlign: 'left' }}>{item.name.slice(0, 16)}</td>
-                  <td style={{ textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {item.unit || 'Pcs'}</td>
+                  <td style={{ textAlign: 'left' }}>{item.name.slice(0, 12)}</td>
+                  <td style={{ textAlign: 'center' }}>{item.bags || '-'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    {formatKGColumn(item)}
+                  </td>
                   <td style={{ textAlign: 'right' }}>{item.total.toFixed(2)}</td>
                 </tr>
               ))}
@@ -224,6 +259,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <div className="print-flex-between">
               <span>Subtotal:</span>
               <span>₹{sale.subtotal.toFixed(2)}</span>
+            </div>
+            <div className="print-flex-between">
+              <span>Total Bags:</span>
+              <span>{calculateTotalBags()}</span>
+            </div>
+            <div className="print-flex-between">
+              <span>Total Weight:</span>
+              <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
             </div>
             {sale.discount > 0 && (
               <div className="print-flex-between">
@@ -298,7 +341,8 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <tr style={{ background: '#f3f4f6' }}>
                 <th style={{ padding: '5px', border: '1px solid #d1d5db', width: '35px', textAlign: 'center' }}>S.No</th>
                 <th style={{ padding: '5px', border: '1px solid #d1d5db' }}>Product Description</th>
-                <th style={{ padding: '5px', border: '1px solid #d1d5db', width: '50px', textAlign: 'center' }}>Qty</th>
+                <th style={{ padding: '5px', border: '1px solid #d1d5db', width: '50px', textAlign: 'center' }}>Bags</th>
+                <th style={{ padding: '5px', border: '1px solid #d1d5db', width: '60px', textAlign: 'center' }}>KG</th>
                 <th style={{ padding: '5px', border: '1px solid #d1d5db', width: '70px', textAlign: 'right' }}>Price (₹)</th>
                 <th style={{ padding: '5px', border: '1px solid #d1d5db', width: '80px', textAlign: 'right' }}>Total (₹)</th>
               </tr>
@@ -308,7 +352,10 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 <tr key={idx}>
                   <td style={{ padding: '4px', border: '1px solid #d1d5db', textAlign: 'center' }}>{idx + 1}</td>
                   <td style={{ padding: '4px', border: '1px solid #d1d5db' }}>{item.name}</td>
-                  <td style={{ padding: '4px', border: '1px solid #d1d5db', textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {item.unit || 'Pcs'}</td>
+                  <td style={{ padding: '4px', border: '1px solid #d1d5db', textAlign: 'center' }}>{item.bags || '-'}</td>
+                  <td style={{ padding: '4px', border: '1px solid #d1d5db', textAlign: 'center' }}>
+                    {formatKGColumn(item)}
+                  </td>
                   <td style={{ padding: '4px', border: '1px solid #d1d5db', textAlign: 'right' }}>{item.salesPrice.toFixed(2)}</td>
                   <td style={{ padding: '4px', border: '1px solid #d1d5db', textAlign: 'right' }}>{item.total.toFixed(2)}</td>
                 </tr>
@@ -343,6 +390,10 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 <div className="print-flex-between">
                   <span>Subtotal:</span>
                   <span>₹{sale.subtotal.toFixed(2)}</span>
+                </div>
+                <div className="print-flex-between">
+                  <span>Total Weight:</span>
+                  <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
                 </div>
                 {sale.discount > 0 && (
                   <div className="print-flex-between" style={{ color: 'red' }}>
@@ -410,18 +461,22 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
         <table>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', width: '50%' }}>ITEM</th>
+              <th style={{ textAlign: 'left', width: '35%' }}>ITEM</th>
               <th style={{ textAlign: 'right', width: '15%' }}>PRICE</th>
-              <th style={{ textAlign: 'center', width: '15%' }}>QTY</th>
+              <th style={{ textAlign: 'center', width: '12%' }}>BAG</th>
+              <th style={{ textAlign: 'center', width: '18%' }}>KG</th>
               <th style={{ textAlign: 'right', width: '20%' }}>TOTAL</th>
             </tr>
           </thead>
           <tbody>
             {sale.items.map((item, idx) => (
               <tr key={idx}>
-                <td style={{ textAlign: 'left' }}>{item.name.slice(0, 20)}</td>
+                <td style={{ textAlign: 'left' }}>{item.name.slice(0, 16)}</td>
                 <td style={{ textAlign: 'right' }}>{item.salesPrice.toFixed(2)}</td>
-                <td style={{ textAlign: 'center' }}>{Number(item.qty.toFixed(3))} {item.unit || 'Pcs'}</td>
+                <td style={{ textAlign: 'center' }}>{item.bags || '-'}</td>
+                <td style={{ textAlign: 'center' }}>
+                  {formatKGColumn(item)}
+                </td>
                 <td style={{ textAlign: 'right' }}>{item.total.toFixed(2)}</td>
               </tr>
             ))}
@@ -455,6 +510,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
           <div className="print-flex-between">
             <span>Subtotal:</span>
             <span>₹{sale.subtotal.toFixed(2)}</span>
+          </div>
+          <div className="print-flex-between">
+            <span>Total Bags:</span>
+            <span>{calculateTotalBags()}</span>
+          </div>
+          <div className="print-flex-between">
+            <span>Total Weight:</span>
+            <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
           </div>
           {sale.discount > 0 && (
             <div className="print-flex-between" style={{ color: 'red' }}>

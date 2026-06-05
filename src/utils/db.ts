@@ -37,6 +37,8 @@ export interface SaleItem {
   total: number;
   variationId?: string;
   variationMark?: string;
+  weight?: number; // total item weight in KG
+  bags?: number; // total bags for this item
 }
 
 export interface Sale {
@@ -73,6 +75,7 @@ export interface PurchaseItem {
   total: number;
   variationId?: string;
   variationMark?: string;
+  bags?: number;
 }
 
 export interface Purchase {
@@ -105,6 +108,14 @@ export interface Supplier {
   phone: string;
   address: string;
   due: number; // amount we owe the supplier
+}
+
+export interface SupplierPayment {
+  id: string;
+  supplierId: string;
+  date: string;
+  amount: number;
+  referenceNo?: string;
 }
 
 export interface StockTransaction {
@@ -246,6 +257,7 @@ const KEYS = {
   PURCHASES: 'billing_purchases',
   STOCK_HISTORY: 'billing_stock_history',
   SETTINGS: 'billing_settings',
+  SUPPLIER_PAYMENTS: 'billing_supplier_payments',
 };
 
 // Helper methods to read/write from localStorage
@@ -258,6 +270,7 @@ const getFirebasePath = (key: string): string | null => {
     case 'billing_purchases': return 'purchases';
     case 'billing_stock_history': return 'stock_history';
     case 'billing_settings': return 'settings';
+    case 'billing_supplier_payments': return 'supplier_payments';
     case 'login_history': return 'login_history';
     case 'app_users': return 'app_users';
     default: return null;
@@ -331,6 +344,7 @@ export const DB = {
     getJSON(KEYS.SALES, INITIAL_SALES);
     getJSON(KEYS.PURCHASES, INITIAL_PURCHASES);
     getJSON(KEYS.STOCK_HISTORY, INITIAL_STOCK_HISTORY);
+    getJSON(KEYS.SUPPLIER_PAYMENTS, []);
   },
 
   reset: () => {
@@ -401,6 +415,12 @@ export const DB = {
       suppliers[idx].due = Math.max(0, suppliers[idx].due + diff);
       setJSON(KEYS.SUPPLIERS, suppliers);
     }
+  },
+  getSupplierPayments: (): SupplierPayment[] => getJSON<SupplierPayment[]>(KEYS.SUPPLIER_PAYMENTS, []),
+  saveSupplierPayment: (payment: SupplierPayment): void => {
+    const payments = DB.getSupplierPayments();
+    payments.push(payment);
+    setJSON(KEYS.SUPPLIER_PAYMENTS, payments);
   },
 
   // Sales
