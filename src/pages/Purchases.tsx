@@ -20,6 +20,9 @@ import {
   CreditCard
 } from 'lucide-react';
 
+const PRODUCT_CATEGORIES = ['Groceries', 'Dairy', 'FMCG', 'Personal Care', 'Household', 'Snacks', 'Beverages'];
+const PRODUCT_UNITS = ['Pcs', 'Kg', 'Litre', 'Box', 'Packet', 'Gram', 'Bag'];
+
 export const Purchases: React.FC = () => {
   const { 
     products, 
@@ -160,6 +163,82 @@ export const Purchases: React.FC = () => {
   const [payAmount, setPayAmount] = useState<number>(0);
   const [paySupplier, setPaySupplier] = useState<Supplier | null>(null);
   const [payNote, setPayNote] = useState('');
+
+  // New Product Creator modal states (inside Invoice Item Builder)
+  const [isNewProductModalOpen, setIsNewProductModalOpen] = useState(false);
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdBarcode, setNewProdBarcode] = useState('');
+  const [newProdCategory, setNewProdCategory] = useState('Groceries');
+  const [newProdUnit, setNewProdUnit] = useState('Pcs');
+  const [newProdPurchasePrice, setNewProdPurchasePrice] = useState<number>(0);
+  const [newProdSalesPrice, setNewProdSalesPrice] = useState<number>(0);
+  const [newProdMinStockAlert, setNewProdMinStockAlert] = useState<number>(10);
+  const [newProdVariations, setNewProdVariations] = useState<ProductVariation[]>([]);
+
+  const openNewProductModal = () => {
+    setNewProdName('');
+    setNewProdBarcode(Date.now().toString());
+    setNewProdCategory('Groceries');
+    setNewProdUnit('Pcs');
+    setNewProdPurchasePrice(0);
+    setNewProdSalesPrice(0);
+    setNewProdMinStockAlert(10);
+    setNewProdVariations([]);
+    setIsNewProductModalOpen(true);
+  };
+
+  const handleSaveNewProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProdName || !newProdBarcode) {
+      showToast('Please fill all required fields correctly', 'warning');
+      return;
+    }
+
+    const barcodeExists = products.some(p => p.barcode === newProdBarcode);
+    if (barcodeExists) {
+      showToast('A product with this barcode already exists', 'danger');
+      return;
+    }
+
+    const processedVariations: ProductVariation[] = newProdVariations.map((v, i) => ({
+      id: v.id || 'VAR-' + Date.now() + i,
+      mark: v.mark,
+      purchasePrice: Number(v.purchasePrice) || 0,
+      salesPrice: Number(v.salesPrice) || 0,
+      currentStock: 0,
+      unit: v.unit,
+      unit2: v.unit2 || undefined,
+      purchasePrice2: v.purchasePrice2 !== undefined ? (Number(v.purchasePrice2) || 0) : undefined,
+      salesPrice2: v.salesPrice2 !== undefined ? (Number(v.salesPrice2) || 0) : undefined
+    }));
+
+    let finalPurchasePrice = newProdPurchasePrice;
+    let finalSalesPrice = newProdSalesPrice;
+
+    if (processedVariations.length > 0) {
+      finalPurchasePrice = processedVariations[0].purchasePrice;
+      finalSalesPrice = processedVariations[0].salesPrice;
+    }
+
+    const productData: Product = {
+      id: 'P' + Date.now().toString().slice(-4),
+      name: newProdName,
+      barcode: newProdBarcode,
+      category: newProdCategory,
+      unit: newProdUnit,
+      purchasePrice: finalPurchasePrice,
+      salesPrice: finalSalesPrice,
+      currentStock: 0,
+      minStockAlert: newProdMinStockAlert,
+      variations: processedVariations.length > 0 ? processedVariations : undefined
+    };
+
+    DB.saveProduct(productData);
+    refreshData();
+    setIsNewProductModalOpen(false);
+    showToast('Product registered in catalog successfully!', 'success');
+    handleProductSelect(productData.id);
+  };
 
   // Handle adding item to the current builder list
   const handleAddItemToList = () => {
@@ -814,7 +893,18 @@ export const Purchases: React.FC = () => {
                   alignItems: 'end' 
                 }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>Select Product</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                      <label style={{ margin: 0 }}>Select Product</label>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ padding: '0 0.25rem', fontSize: '0.75rem', height: 'auto', color: 'var(--primary)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px', background: 'transparent', border: 'none', cursor: 'pointer' }}
+                        onClick={openNewProductModal}
+                      >
+                        <Plus size={12} />
+                        <span>Add Product</span>
+                      </button>
+                    </div>
                     <select
                       className="form-control"
                       value={tempProductId}
@@ -2409,6 +2499,227 @@ export const Purchases: React.FC = () => {
                 </button>
                 <button type="submit" className="btn btn-success">
                   Record Settlement
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add New Product Modal (from Invoice Item Builder) */}
+      {isNewProductModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '650px' }}>
+            <div className="modal-header">
+              <h3>Register New Product</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setIsNewProductModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveNewProduct}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <div className="form-group">
+                  <label>Product Name *</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Enter product title..."
+                    required
+                    value={newProdName}
+                    onChange={(e) => setNewProdName(e.target.value)}
+                  />
+                </div>
+
+                <div className="grid-2">
+                  <div className="form-group">
+                    <label>Barcode / Scanner Code *</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Scan or type barcode..."
+                      required
+                      value={newProdBarcode}
+                      onChange={(e) => setNewProdBarcode(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Category</label>
+                    <select
+                      className="form-control"
+                      value={newProdCategory}
+                      onChange={(e) => setNewProdCategory(e.target.value)}
+                    >
+                      {PRODUCT_CATEGORIES.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid-2">
+                  <div className="form-group">
+                    <label>Unit of Measure</label>
+                    <select
+                      className="form-control"
+                      value={newProdUnit}
+                      onChange={(e) => setNewProdUnit(e.target.value)}
+                    >
+                      {PRODUCT_UNITS.map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Minimum Stock Alert Level</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min="0"
+                      value={newProdMinStockAlert}
+                      onChange={(e) => setNewProdMinStockAlert(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid-2">
+                  <div className="form-group">
+                    <label>Purchase Price (₹ Cost Price) *</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min="0"
+                      step="0.01"
+                      required
+                      disabled={newProdVariations.length > 0}
+                      value={newProdVariations.length > 0 ? (newProdVariations[0].purchasePrice || '') : (newProdPurchasePrice || '')}
+                      onChange={(e) => setNewProdPurchasePrice(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Sales Price (₹ Retail Price) *</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      min="0"
+                      step="0.01"
+                      required
+                      disabled={newProdVariations.length > 0}
+                      value={newProdVariations.length > 0 ? (newProdVariations[0].salesPrice || '') : (newProdSalesPrice || '')}
+                      onChange={(e) => setNewProdSalesPrice(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+
+                {/* Variations Section */}
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius-sm)', padding: '1rem', background: 'rgba(255, 255, 255, 0.01)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ fontSize: '0.9rem', fontWeight: 600 }}>Product Variations (Different Marks & Prices)</h4>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                      onClick={() => setNewProdVariations(prev => [...prev, { id: '', mark: '', purchasePrice: 0, salesPrice: 0, currentStock: 0, unit: newProdUnit, unit2: '', purchasePrice2: 0, salesPrice2: 0 }])}
+                    >
+                      <Plus size={12} />
+                      <span>Add Variation</span>
+                    </button>
+                  </div>
+                  
+                  {newProdVariations.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '200px', overflowY: 'auto' }}>
+                      {newProdVariations.map((v, idx) => (
+                        <div key={idx} style={{ 
+                          border: '1px solid var(--border-color)', 
+                          borderRadius: 'var(--border-radius-sm)', 
+                          padding: '0.75rem', 
+                          background: 'rgba(255, 255, 255, 0.02)', 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '0.5rem' 
+                        }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1.5fr auto', gap: '0.5rem', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              placeholder="Variation Mark (e.g. Batch A / MRP 250)"
+                              className="form-control"
+                              style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
+                              required
+                              value={v.mark}
+                              onChange={(e) => {
+                                const updated = [...newProdVariations];
+                                updated[idx].mark = e.target.value;
+                                setNewProdVariations(updated);
+                              }}
+                            />
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Unit: {v.unit || newProdUnit}</span>
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-icon"
+                              style={{ padding: '0.25rem' }}
+                              onClick={() => {
+                                const updated = newProdVariations.filter((_, i) => i !== idx);
+                                setNewProdVariations(updated);
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: '0.7rem' }}>Purchase Price (₹)</label>
+                              <input
+                                type="number"
+                                className="form-control"
+                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
+                                required
+                                min="0"
+                                step="0.01"
+                                value={v.purchasePrice || ''}
+                                onChange={(e) => {
+                                  const updated = [...newProdVariations];
+                                  updated[idx].purchasePrice = parseFloat(e.target.value) || 0;
+                                  setNewProdVariations(updated);
+                                }}
+                              />
+                            </div>
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label style={{ fontSize: '0.7rem' }}>Sales Price (₹)</label>
+                              <input
+                                type="number"
+                                className="form-control"
+                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
+                                required
+                                min="0"
+                                step="0.01"
+                                value={v.salesPrice || ''}
+                                onChange={(e) => {
+                                  const updated = [...newProdVariations];
+                                  updated[idx].salesPrice = parseFloat(e.target.value) || 0;
+                                  setNewProdVariations(updated);
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', padding: '0.5rem 0' }}>
+                      No variations added. Product will be saved as a simple standalone item.
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setIsNewProductModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Save & Select Product
                 </button>
               </div>
             </form>

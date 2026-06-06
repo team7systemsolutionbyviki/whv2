@@ -25,6 +25,7 @@ export const POS: React.FC = () => {
   const { user } = useAuth();
   const {
     products,
+    dealers,
     refreshData,
     showToast,
     retailCart,
@@ -66,7 +67,8 @@ export const POS: React.FC = () => {
   const [cashPaid, setCashPaid] = useState<number>(0);
   const [upiPaid, setUpiPaid] = useState<number>(0);
   const [cardPaid, setCardPaid] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card' | 'Mixed'>('Cash');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card' | 'Mixed' | 'Credit'>('Cash');
+  const [selectedDealerId, setSelectedDealerId] = useState<string>('');
 
   // Return Form States
   const [returnInvoiceNo, setReturnInvoiceNo] = useState('');
@@ -185,6 +187,7 @@ export const POS: React.FC = () => {
     setCashPaid(cartTotal);
     setUpiPaid(0);
     setCardPaid(0);
+    setSelectedDealerId('');
     setIsPayModalOpen(true);
   };
 
@@ -192,17 +195,24 @@ export const POS: React.FC = () => {
   const handleCompleteSale = () => {
     const totalPaid = Number(cashPaid) + Number(upiPaid) + Number(cardPaid);
     
-    if (paymentMethod !== 'Mixed' && totalPaid < cartTotal) {
+    if (paymentMethod !== 'Mixed' && paymentMethod !== 'Credit' && totalPaid < cartTotal) {
       showToast(`Insufficient payment amount (Paid: ₹${totalPaid}, Due: ₹${cartTotal})`, 'warning');
       return;
     }
+
+    if (paymentMethod === 'Credit' && !selectedDealerId) {
+      showToast('Please select a dealer to record credit sale outstanding', 'warning');
+      return;
+    }
+
+    const matchedDealer = dealers.find(d => d.id === selectedDealerId);
 
     const saleData: Sale = {
       id: 'S-' + Date.now(),
       invoiceNo: settings.invoicePrefix + new Date().getFullYear() + '-' + Date.now().toString().slice(-4),
       date: new Date().toISOString(),
-      customerName,
-      customerPhone: customerPhone || undefined,
+      customerName: paymentMethod === 'Credit' && matchedDealer ? matchedDealer.name : customerName,
+      customerPhone: paymentMethod === 'Credit' && matchedDealer ? matchedDealer.phone : (customerPhone || undefined),
       items: retailCart.map(item => {
         const price = getCartItemPrice(item);
         const name = item.variation ? `${item.product.name} (${item.variation.mark})` : item.product.name;
@@ -234,6 +244,7 @@ export const POS: React.FC = () => {
       },
       status: 'completed',
       type: 'retail',
+      dealerId: paymentMethod === 'Credit' ? selectedDealerId : undefined,
       createdBy: user?.email || 'Unknown'
     };
 
@@ -781,8 +792,8 @@ export const POS: React.FC = () => {
               </div>
 
               {/* Payment Mode Selector tabs */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.25rem' }}>
-                {(['Cash', 'UPI', 'Card', 'Mixed'] as const).map(method => (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.25rem' }}>
+                {(['Cash', 'UPI', 'Card', 'Mixed', 'Credit'] as const).map(method => (
                   <button
                     key={method}
                     type="button"
@@ -794,23 +805,26 @@ export const POS: React.FC = () => {
                         setCashPaid(0); setUpiPaid(cartTotal); setCardPaid(0);
                       } else if (method === 'Card') {
                         setCashPaid(0); setUpiPaid(0); setCardPaid(cartTotal);
+                      } else if (method === 'Credit') {
+                        setCashPaid(0); setUpiPaid(0); setCardPaid(0);
                       } else {
                         setCashPaid(0); setUpiPaid(0); setCardPaid(0);
                       }
                     }}
                     className={`btn ${paymentMethod === method ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ padding: '0.5rem 0', fontSize: '0.8rem', flexDirection: 'column', gap: '0.2rem' }}
+                    style={{ padding: '0.5rem 0', fontSize: '0.75rem', flexDirection: 'column', gap: '0.2rem' }}
                   >
                     {method === 'Cash' && <DollarSign size={14} />}
                     {method === 'UPI' && <Smartphone size={14} />}
                     {method === 'Card' && <CreditCard size={14} />}
                     {method === 'Mixed' && <History size={14} />}
+                    {method === 'Credit' && <RotateCcw size={14} style={{ transform: 'rotate(180deg)' }} />}
                     <span>{method}</span>
                   </button>
                 ))}
               </div>
 
-              {/* Payment Splits inputs */}
+              {/* Payment Splits / Credit inputs */}
               {paymentMethod === 'Mixed' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'var(--bg-input)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <h4 style={{ fontSize: '0.85rem', fontWeight: 600 }}>Split Amounts:</h4>
@@ -861,6 +875,23 @@ export const POS: React.FC = () => {
                     </span>
                   </div>
                 </div>
+              ) : paymentMethod === 'Credit' ? (
+                <div className="form-group" style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Select Dealer (Outstanding Credit Profile) *</label>
+                  <select
+                    className="form-control"
+                    required
+                    value={selectedDealerId}
+                    onChange={(e) => setSelectedDealerId(e.target.value)}
+                  >
+                    <option value="">-- Choose Registered Dealer --</option>
+                    {dealers.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} (PH: {d.phone} | Outstanding: ₹{d.outstanding.toFixed(2)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               ) : (
                 <div className="form-group">
                   <label>Amount Received *</label>
@@ -895,7 +926,10 @@ export const POS: React.FC = () => {
               <button 
                 className="btn btn-primary" 
                 onClick={handleCompleteSale}
-                disabled={paymentMethod === 'Mixed' && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) !== cartTotal}
+                disabled={
+                  (paymentMethod === 'Mixed' && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) !== cartTotal) ||
+                  (paymentMethod === 'Credit' && !selectedDealerId)
+                }
               >
                 Checkout & Print
               </button>

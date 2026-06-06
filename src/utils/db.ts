@@ -53,7 +53,7 @@ export interface Sale {
   tax: number; // calculated GST amount
   total: number;
   profit: number; // calculated profit
-  paymentMethod: 'Cash' | 'UPI' | 'Card' | 'Mixed';
+  paymentMethod: 'Cash' | 'UPI' | 'Card' | 'Mixed' | 'Credit';
   paymentDetails: {
     cashAmount?: number;
     upiAmount?: number;
@@ -466,11 +466,11 @@ export const DB = {
         setJSON(KEYS.STOCK_HISTORY, history);
 
         // Dealer credit updates
-        if (sale.type === 'wholesale' && sale.dealerId && sale.paymentMethod === 'Mixed') {
-          // Cash + UPI + Card paid amount
-          const paid = (sale.paymentDetails.cashAmount || 0) + 
-                       (sale.paymentDetails.upiAmount || 0) + 
-                       (sale.paymentDetails.cardAmount || 0);
+        if (sale.dealerId) {
+          const paid = (sale.paymentMethod === 'Credit') ? 0 :
+                       ((sale.paymentDetails.cashAmount || 0) + 
+                        (sale.paymentDetails.upiAmount || 0) + 
+                        (sale.paymentDetails.cardAmount || 0));
           const outstanding = sale.total - paid;
           if (outstanding > 0) {
             DB.updateDealerOutstanding(sale.dealerId, outstanding);
