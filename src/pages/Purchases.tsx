@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
 import { DB, Product, Purchase, Supplier, PurchaseItem, ProductVariation } from '../utils/db';
@@ -8,6 +8,7 @@ import {
   Trash2, 
   Check, 
   TrendingDown, 
+  TrendingUp,
   ChevronRight, 
   AlertCircle, 
   UserPlus, 
@@ -93,6 +94,26 @@ export const Purchases: React.FC = () => {
   const [supPhone, setSupPhone] = useState('');
   const [supAddress, setSupAddress] = useState('');
   const [selectedLedgerSupplier, setSelectedLedgerSupplier] = useState<Supplier | null>(null);
+
+  // Set default to consolidated ledger when suppliers are available
+  useEffect(() => {
+    if (suppliers.length > 0) {
+      if (!selectedLedgerSupplier) {
+        setSelectedLedgerSupplier({
+          id: 'ALL',
+          name: 'All Suppliers',
+          phone: 'Consolidated Ledger',
+          address: 'All registered suppliers in the system',
+          due: suppliers.reduce((sum, s) => sum + s.due, 0)
+        });
+      } else if (selectedLedgerSupplier.id === 'ALL') {
+        const totalDue = suppliers.reduce((sum, s) => sum + s.due, 0);
+        if (selectedLedgerSupplier.due !== totalDue) {
+          setSelectedLedgerSupplier(prev => prev ? { ...prev, due: totalDue } : null);
+        }
+      }
+    }
+  }, [suppliers, selectedLedgerSupplier]);
   
   // Supplier Ledger Filter States
   const [ledgerFilterType, setLedgerFilterType] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
@@ -100,6 +121,39 @@ export const Purchases: React.FC = () => {
   const [ledgerEndDate, setLedgerEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [ledgerViewMode, setLedgerViewMode] = useState<'ledger' | 'sales_profit'>('ledger');
   const [ledgerStockFilter, setLedgerStockFilter] = useState<'all' | 'in' | 'out'>('all');
+  const [reportGrouping, setReportGrouping] = useState<'product' | 'mark'>('product');
+  const [ledgerProductFilter, setLedgerProductFilter] = useState<string>('all');
+  const [ledgerMarkFilter, setLedgerMarkFilter] = useState<string>('all');
+
+  // List of all products matching the current supplier's purchase items
+  const ledgerProductsList = useMemo(() => {
+    if (!selectedLedgerSupplier) return [];
+    const pList = DB.getPurchases().filter(p => selectedLedgerSupplier.id === 'ALL' || p.supplierId === selectedLedgerSupplier.id);
+    const prodIds = new Set(pList.flatMap(p => p.items.map(item => item.productId)));
+    return products.filter(p => prodIds.has(p.id));
+  }, [selectedLedgerSupplier, products]);
+
+  // List of all variation marks matching the current supplier's purchase items and selected product filter
+  const ledgerMarksList = useMemo(() => {
+    if (!selectedLedgerSupplier) return [];
+    const pList = DB.getPurchases().filter(p => selectedLedgerSupplier.id === 'ALL' || p.supplierId === selectedLedgerSupplier.id);
+    const marks = new Set<string>();
+    pList.forEach(p => {
+      p.items.forEach(item => {
+        if (ledgerProductFilter === 'all' || item.productId === ledgerProductFilter) {
+          if (item.variationMark) {
+            marks.add(item.variationMark);
+          }
+        }
+      });
+    });
+    return Array.from(marks).sort();
+  }, [selectedLedgerSupplier, ledgerProductFilter]);
+
+  // Reset mark filter when product filter changes
+  useEffect(() => {
+    setLedgerMarkFilter('all');
+  }, [ledgerProductFilter]);
 
   // Pay Dues state
   const [isPayDuesOpen, setIsPayDuesOpen] = useState(false);
@@ -311,9 +365,14 @@ export const Purchases: React.FC = () => {
     setPaySupplier(null);
     showToast('Payment logged and supplier due reduced', 'success');
 
-    if (selectedLedgerSupplier && selectedLedgerSupplier.id === paySupplier.id) {
-      const updated = DB.getSuppliers().find(s => s.id === paySupplier.id);
-      if (updated) setSelectedLedgerSupplier(updated);
+    if (selectedLedgerSupplier) {
+      if (selectedLedgerSupplier.id === 'ALL') {
+        const totalDue = DB.getSuppliers().reduce((sum, s) => sum + s.due, 0);
+        setSelectedLedgerSupplier(prev => prev ? { ...prev, due: totalDue } : null);
+      } else if (selectedLedgerSupplier.id === paySupplier.id) {
+        const updated = DB.getSuppliers().find(s => s.id === paySupplier.id);
+        if (updated) setSelectedLedgerSupplier(updated);
+      }
     }
   };
 
@@ -351,16 +410,36 @@ export const Purchases: React.FC = () => {
 
   const supplierPurchases = selectedLedgerSupplier
     ? DB.getPurchases()
-        .filter(p => p.supplierId === selectedLedgerSupplier.id && ledgerDateMatch(p.date))
+        .filter(p => (selectedLedgerSupplier.id === 'ALL' || p.supplierId === selectedLedgerSupplier.id) && ledgerDateMatch(p.date))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     : [];
 
-  const totalPurchaseCost = supplierPurchases.reduce((sum, p) => sum + p.total, 0);
-  const totalStockPurchased = supplierPurchases.reduce((sum, p) => sum + p.items.reduce((itemSum, item) => itemSum + item.qty, 0), 0);
+  const totalPurchaseCost = supplierPurchases.reduce((sum, p) => {
+    return sum + p.items
+      .filter(item => {
+        const matchProd = ledgerProductFilter === 'all' || item.productId === ledgerProductFilter;
+        const matchMark = ledgerMarkFilter === 'all' || item.variationMark === ledgerMarkFilter;
+        return matchProd && matchMark;
+      })
+      .reduce((itemSum, item) => itemSum + item.total, 0);
+  }, 0);
+
+  const totalStockPurchased = supplierPurchases.reduce((sum, p) => {
+    return sum + p.items
+      .filter(item => {
+        const matchProd = ledgerProductFilter === 'all' || item.productId === ledgerProductFilter;
+        const matchMark = ledgerMarkFilter === 'all' || item.variationMark === ledgerMarkFilter;
+        return matchProd && matchMark;
+      })
+      .reduce((itemSum, item) => itemSum + item.qty, 0);
+  }, 0);
+
   const balanceDues = selectedLedgerSupplier ? selectedLedgerSupplier.due : 0;
 
   const allSupplierPayments = selectedLedgerSupplier
-    ? supplierPayments.filter(pm => pm.supplierId === selectedLedgerSupplier.id)
+    ? (selectedLedgerSupplier.id === 'ALL'
+        ? supplierPayments
+        : supplierPayments.filter(pm => pm.supplierId === selectedLedgerSupplier.id))
     : [];
 
   const totalPaidAmount = supplierPurchases.reduce((sum, p) => sum + (p.paymentStatus === 'Paid' ? p.total : 0), 0) +
@@ -368,10 +447,13 @@ export const Purchases: React.FC = () => {
 
   // Sales Profitability Analysis
   const supplierAllProductIds = selectedLedgerSupplier
-    ? new Set(
-        DB.getPurchases()
-          .filter(p => p.supplierId === selectedLedgerSupplier.id)
-          .flatMap(p => p.items.map(item => item.productId))
+    ? (ledgerProductFilter !== 'all'
+        ? new Set([ledgerProductFilter])
+        : new Set(
+            DB.getPurchases()
+              .filter(p => selectedLedgerSupplier.id === 'ALL' || p.supplierId === selectedLedgerSupplier.id)
+              .flatMap(p => p.items.map(item => item.productId))
+          )
       )
     : new Set<string>();
 
@@ -380,7 +462,11 @@ export const Purchases: React.FC = () => {
         .filter(s => s.status === 'completed' && ledgerDateMatch(s.date))
         .map(s => ({
           ...s,
-          items: s.items.filter(item => supplierAllProductIds.has(item.productId))
+          items: s.items.filter(item => {
+            const matchesProduct = supplierAllProductIds.has(item.productId);
+            const matchesMark = ledgerMarkFilter === 'all' || item.variationMark === ledgerMarkFilter;
+            return matchesProduct && matchesMark;
+          })
         }))
         .filter(s => s.items.length > 0)
     : [];
@@ -401,6 +487,82 @@ export const Purchases: React.FC = () => {
   const totalSalesQty = supplierProductSales.reduce((sum, s) => {
     return sum + s.items.reduce((acc, item) => acc + item.qty, 0);
   }, 0);
+
+  const currentStockBalanceQty = Array.from(supplierAllProductIds).reduce((sum, prodId) => {
+    const prod = products.find(p => p.id === prodId);
+    if (!prod) return sum;
+    if (prod.variations && prod.variations.length > 0) {
+      return sum + prod.variations
+        .filter(v => ledgerMarkFilter === 'all' || v.mark === ledgerMarkFilter)
+        .reduce((acc, v) => acc + v.currentStock, 0);
+    }
+    if (ledgerMarkFilter !== 'all') return sum;
+    return sum + prod.currentStock;
+  }, 0);
+
+  const ledgerStockValue = Array.from(supplierAllProductIds).reduce((sum, prodId) => {
+    const prod = products.find(p => p.id === prodId);
+    if (!prod) return sum;
+    if (prod.variations && prod.variations.length > 0) {
+      return sum + prod.variations
+        .filter(v => ledgerMarkFilter === 'all' || v.mark === ledgerMarkFilter)
+        .reduce((acc, v) => acc + (v.currentStock * v.purchasePrice), 0);
+    }
+    if (ledgerMarkFilter !== 'all') return sum;
+    return sum + (prod.currentStock * prod.purchasePrice);
+  }, 0);
+
+  // Mark-wise / Variation-wise calculations
+  const productVariationPurchaseQtyMap: { [key: string]: number } = {};
+  supplierPurchases.forEach(p => {
+    p.items.forEach(item => {
+      const key = `${item.productId}_${item.variationId || 'DEFAULT'}_${item.variationMark || ''}`;
+      productVariationPurchaseQtyMap[key] = (productVariationPurchaseQtyMap[key] || 0) + item.qty;
+    });
+  });
+
+  const productVariationSalesMap: { [key: string]: { qty: number; revenue: number; cost: number } } = {};
+  supplierProductSales.forEach(s => {
+    s.items.forEach(item => {
+      const key = `${item.productId}_${item.variationId || 'DEFAULT'}_${item.variationMark || ''}`;
+      const itemDiscount = s.subtotal > 0 ? (item.total / s.subtotal) * s.discount : 0;
+      const netRev = item.total - itemDiscount;
+      const cost = item.purchasePrice * item.qty;
+      if (!productVariationSalesMap[key]) {
+        productVariationSalesMap[key] = { qty: 0, revenue: 0, cost: 0 };
+      }
+      productVariationSalesMap[key].qty += item.qty;
+      productVariationSalesMap[key].revenue += netRev;
+      productVariationSalesMap[key].cost += cost;
+    });
+  });
+
+  const supplierAllProductVariations = selectedLedgerSupplier
+    ? Array.from(
+        new Set(
+          DB.getPurchases()
+            .filter(p => selectedLedgerSupplier.id === 'ALL' || p.supplierId === selectedLedgerSupplier.id)
+            .flatMap(p => p.items.map(item => `${item.productId}_${item.variationId || 'DEFAULT'}_${item.variationMark || ''}`))
+        )
+      )
+        .map(str => {
+          const parts = str.split('_');
+          const productId = parts[0];
+          const variationId = parts[1];
+          const variationMark = parts.slice(2).join('_');
+          return {
+            productId,
+            variationId: variationId === 'DEFAULT' ? undefined : variationId,
+            variationMark: variationMark || undefined,
+            key: str
+          };
+        })
+        .filter(item => {
+          const matchesProduct = ledgerProductFilter === 'all' || item.productId === ledgerProductFilter;
+          const matchesMark = ledgerMarkFilter === 'all' || item.variationMark === ledgerMarkFilter;
+          return matchesProduct && matchesMark;
+        })
+    : [];
 
   // Map to group quantities
   const productPurchaseQtyMap: { [prodId: string]: number } = {};
@@ -427,7 +589,9 @@ export const Purchases: React.FC = () => {
 
   // Calculate Running Balance over ALL time (unfiltered by date) to ensure correct running balance, then filter for display
   const allSupplierPurchases = selectedLedgerSupplier
-    ? DB.getPurchases().filter(p => p.supplierId === selectedLedgerSupplier.id)
+    ? (selectedLedgerSupplier.id === 'ALL'
+        ? DB.getPurchases()
+        : DB.getPurchases().filter(p => p.supplierId === selectedLedgerSupplier.id))
     : [];
 
   const allSupplierSales = selectedLedgerSupplier
@@ -450,6 +614,9 @@ export const Purchases: React.FC = () => {
       deliveryPersonPhone: p.deliveryPersonPhone || undefined,
       customerName: undefined as string | undefined,
       items: p.items.map(item => ({
+        productId: item.productId,
+        variationId: item.variationId,
+        variationMark: item.variationMark,
         name: item.name,
         qty: item.qty,
         unit: item.unit,
@@ -464,7 +631,8 @@ export const Purchases: React.FC = () => {
       status: p.paymentStatus,
       due: p.total,
       paid: p.paymentStatus === 'Paid' ? p.total : 0,
-      particulars: `Purchase Invoice (${p.paymentStatus})`
+      particulars: `Purchase Invoice (${p.paymentStatus})`,
+      supplierName: suppliers.find(s => s.id === p.supplierId)?.name || 'Unknown Supplier'
     })),
     ...allSupplierPayments.map(pm => ({
       id: pm.id,
@@ -482,7 +650,8 @@ export const Purchases: React.FC = () => {
       status: 'Paid',
       due: 0,
       paid: pm.amount,
-      particulars: `Payment Settlement`
+      particulars: `Payment Settlement`,
+      supplierName: suppliers.find(s => s.id === pm.supplierId)?.name || 'Unknown Supplier'
     })),
     ...allSupplierSales.map(s => ({
       id: s.id,
@@ -495,6 +664,9 @@ export const Purchases: React.FC = () => {
       items: s.items.map(item => {
         const itemDiscount = s.subtotal > 0 ? (item.total / s.subtotal) * s.discount : 0;
         return {
+          productId: item.productId,
+          variationId: item.variationId,
+          variationMark: item.variationMark,
           name: item.name,
           qty: item.qty,
           unit: item.unit,
@@ -513,7 +685,8 @@ export const Purchases: React.FC = () => {
       status: 'Paid',
       due: 0,
       paid: 0,
-      particulars: `Stock Out (Sale to Customer)`
+      particulars: `Stock Out (Sale to Customer)`,
+      supplierName: undefined as string | undefined
     }))
   ];
 
@@ -537,6 +710,24 @@ export const Purchases: React.FC = () => {
 
   // Filter transactions for current view list
   const unifiedTransactions = timelineWithBalance
+    .map(t => {
+      if (t.type === 'payment') return t;
+      const filteredItems = t.items.filter(item => {
+        const matchesProduct = ledgerProductFilter === 'all' || item.productId === ledgerProductFilter;
+        const matchesMark = ledgerMarkFilter === 'all' || item.variationMark === ledgerMarkFilter;
+        return matchesProduct && matchesMark;
+      });
+      return {
+        ...t,
+        items: filteredItems
+      };
+    })
+    .filter(t => {
+      if (t.type === 'payment') {
+        return ledgerProductFilter === 'all' && ledgerMarkFilter === 'all';
+      }
+      return t.items.length > 0;
+    })
     .filter(t => ledgerDateMatch(t.date))
     .filter(t => {
       if (ledgerStockFilter === 'in') return t.type === 'in';
@@ -563,10 +754,30 @@ export const Purchases: React.FC = () => {
             New Purchase Entry
           </button>
           <button 
-            className={`btn ${subTab === 'suppliers' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setSubTab('suppliers')}
+            className={`btn ${subTab === 'suppliers' && selectedLedgerSupplier?.id !== 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => {
+              setSubTab('suppliers');
+              if (selectedLedgerSupplier?.id === 'ALL' || !selectedLedgerSupplier) {
+                setSelectedLedgerSupplier(suppliers[0] || null);
+              }
+            }}
           >
             Supplier Directory & Ledgers
+          </button>
+          <button 
+            className={`btn ${subTab === 'suppliers' && selectedLedgerSupplier?.id === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => {
+              setSubTab('suppliers');
+              setSelectedLedgerSupplier({
+                id: 'ALL',
+                name: 'All Suppliers',
+                phone: 'Consolidated Ledger',
+                address: 'All registered suppliers in the system',
+                due: suppliers.reduce((sum, s) => sum + s.due, 0)
+              });
+            }}
+          >
+            Full Consolidated Ledger
           </button>
           <button 
             className={`btn ${subTab === 'history' ? 'btn-primary' : 'btn-secondary'}`}
@@ -926,6 +1137,38 @@ export const Purchases: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {/* Consolidated Option */}
+              <div
+                style={{
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: selectedLedgerSupplier?.id === 'ALL' ? 'var(--primary-light)' : 'var(--bg-input)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderLeft: '4px solid var(--primary)'
+                }}
+                onClick={() => setSelectedLedgerSupplier({
+                  id: 'ALL',
+                  name: 'All Suppliers',
+                  phone: 'Consolidated Ledger',
+                  address: 'All registered suppliers in the system',
+                  due: suppliers.reduce((sum, s) => sum + s.due, 0)
+                })}
+              >
+                <div>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 700 }}>Full Consolidated Ledger</h4>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>All suppliers combined</span>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: suppliers.reduce((sum, s) => sum + s.due, 0) > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                    ₹{suppliers.reduce((sum, s) => sum + s.due, 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
               {suppliers.map(s => (
                 <div
                   key={s.id}
@@ -978,7 +1221,7 @@ export const Purchases: React.FC = () => {
                     <h3 style={{ fontSize: '1.1rem' }}>Supplier Ledger Details</h3>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                       Supplier: <strong>{selectedLedgerSupplier.name}</strong>
-                      {selectedLedgerSupplier.phone && ` | PH: ${selectedLedgerSupplier.phone}`}
+                      {selectedLedgerSupplier.phone && selectedLedgerSupplier.id !== 'ALL' && ` | PH: ${selectedLedgerSupplier.phone}`}
                     </span>
                   </div>
                   {((ledgerViewMode === 'ledger' && supplierPurchases.length > 0) || (ledgerViewMode === 'sales_profit' && supplierAllProductIds.size > 0)) && (
@@ -1046,6 +1289,38 @@ export const Purchases: React.FC = () => {
                     </select>
                   </div>
 
+                  {/* Product Filter Selector */}
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Product:</span>
+                    <select
+                      className="form-control"
+                      style={{ width: '160px', padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                      value={ledgerProductFilter}
+                      onChange={(e) => setLedgerProductFilter(e.target.value)}
+                    >
+                      <option value="all">All Products</option>
+                      {ledgerProductsList.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Mark Filter Selector */}
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Mark:</span>
+                    <select
+                      className="form-control"
+                      style={{ width: '130px', padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                      value={ledgerMarkFilter}
+                      onChange={(e) => setLedgerMarkFilter(e.target.value)}
+                    >
+                      <option value="all">All Marks</option>
+                      {ledgerMarksList.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Custom Date Picker */}
                   {ledgerFilterType === 'custom' && (
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -1072,8 +1347,8 @@ export const Purchases: React.FC = () => {
                 {ledgerViewMode === 'ledger' ? (
                   /* Ledger & Invoices View Mode */
                   <div>
-                    {/* 4 Summary cards */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                    {/* Summary cards grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
                       {/* Total Purchases */}
                       <div className="glass-panel" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderLeft: '4px solid var(--primary)' }}>
                         <div style={{ padding: '0.4rem', borderRadius: '6px', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
@@ -1082,6 +1357,17 @@ export const Purchases: React.FC = () => {
                         <div>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, display: 'block' }}>Total Purchases</span>
                           <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '0.1rem', margin: 0 }}>₹{totalPurchaseCost.toFixed(2)}</h4>
+                        </div>
+                      </div>
+
+                      {/* Total Sales */}
+                      <div className="glass-panel" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderLeft: '4px solid var(--info)' }}>
+                        <div style={{ padding: '0.4rem', borderRadius: '6px', background: 'var(--info-light)', color: 'var(--info)', display: 'flex', alignItems: 'center' }}>
+                          <TrendingUp size={18} />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, display: 'block' }}>Total Sales</span>
+                          <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '0.1rem', margin: 0 }}>₹{totalSalesRevenue.toFixed(2)}</h4>
                         </div>
                       </div>
 
@@ -1107,14 +1393,47 @@ export const Purchases: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Total Stock Qty */}
-                      <div className="glass-panel" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderLeft: '4px solid var(--info)' }}>
-                        <div style={{ padding: '0.4rem', borderRadius: '6px', background: 'var(--info-light)', color: 'var(--info)', display: 'flex', alignItems: 'center' }}>
+                      {/* Stock In Qty */}
+                      <div className="glass-panel" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderLeft: '4px solid var(--warning)' }}>
+                        <div style={{ padding: '0.4rem', borderRadius: '6px', background: 'var(--warning-light)', color: 'var(--warning)', display: 'flex', alignItems: 'center' }}>
                           <Package size={18} />
                         </div>
                         <div>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, display: 'block' }}>Total Stock Qty</span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, display: 'block' }}>Stock In Qty</span>
                           <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '0.1rem', margin: 0 }}>{Number(totalStockPurchased.toFixed(3))}</h4>
+                        </div>
+                      </div>
+
+                      {/* Stock Out Qty */}
+                      <div className="glass-panel" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderLeft: '4px solid #a855f7' }}>
+                        <div style={{ padding: '0.4rem', borderRadius: '6px', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', display: 'flex', alignItems: 'center' }}>
+                          <Package size={18} />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, display: 'block' }}>Stock Out Qty</span>
+                          <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '0.1rem', margin: 0 }}>{Number(totalSalesQty.toFixed(3))}</h4>
+                        </div>
+                      </div>
+
+                      {/* Balance Stock Qty */}
+                      <div className="glass-panel" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderLeft: '4px solid var(--success)' }}>
+                        <div style={{ padding: '0.4rem', borderRadius: '6px', background: 'var(--success-light)', color: 'var(--success)', display: 'flex', alignItems: 'center' }}>
+                          <Package size={18} />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, display: 'block' }}>Balance Stock Qty</span>
+                          <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '0.1rem', margin: 0 }}>{Number(currentStockBalanceQty.toFixed(3))}</h4>
+                        </div>
+                      </div>
+
+                      {/* Ledger Stock Value */}
+                      <div className="glass-panel" style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderLeft: '4px solid var(--primary)' }}>
+                        <div style={{ padding: '0.4rem', borderRadius: '6px', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
+                          <DollarSign size={18} />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 500, display: 'block' }}>Ledger Stock Value</span>
+                          <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '0.1rem', margin: 0 }}>₹{ledgerStockValue.toFixed(2)}</h4>
                         </div>
                       </div>
                     </div>
@@ -1190,6 +1509,11 @@ export const Purchases: React.FC = () => {
                                         {t.type === 'payment' && `Dues Settlement`}
                                         {t.type === 'out' && `Sales Stock Out`}
                                       </strong>
+                                      {selectedLedgerSupplier?.id === 'ALL' && t.supplierName && (
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 600, padding: '0.05rem 0.3rem', background: 'var(--primary-light)', borderRadius: '3px' }}>
+                                          {t.supplierName}
+                                        </span>
+                                      )}
                                       {t.customerName && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}> (Customer: {t.customerName})</span>}
                                     </div>
                                     
@@ -1293,67 +1617,155 @@ export const Purchases: React.FC = () => {
                       </div>
                     </div>
 
-                    {supplierAllProductIds.size > 0 ? (
-                      <div className="table-container">
-                        <table className="custom-table" style={{ fontSize: '0.8rem' }}>
-                          <thead>
-                            <tr>
-                              <th style={{ paddingLeft: '1rem' }}>Product Details</th>
-                              <th style={{ textAlign: 'center', width: '90px' }}>Purchased Qty</th>
-                              <th style={{ textAlign: 'center', width: '90px' }}>Sold Qty</th>
-                              <th style={{ textAlign: 'center', width: '90px' }}>Current Stock</th>
-                              <th style={{ textAlign: 'right', width: '110px' }}>Revenue (₹)</th>
-                              <th style={{ textAlign: 'right', width: '110px' }}>Profit/Loss (₹)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Array.from(supplierAllProductIds).map(prodId => {
-                              const prod = products.find(p => p.id === prodId);
-                              if (!prod) return null;
+                    {/* Report Type Sub-toggle */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Group By:</span>
+                      <button
+                        className={`btn ${reportGrouping === 'product' ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', borderRadius: '4px' }}
+                        onClick={() => setReportGrouping('product')}
+                      >
+                        Product Wise
+                      </button>
+                      <button
+                        className={`btn ${reportGrouping === 'mark' ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', borderRadius: '4px' }}
+                        onClick={() => setReportGrouping('mark')}
+                      >
+                        Mark Wise
+                      </button>
+                    </div>
 
-                              const purchasedQty = productPurchaseQtyMap[prodId] || 0;
-                              const soldData = productSalesMap[prodId] || { qty: 0, revenue: 0, cost: 0 };
-                              const productProfit = soldData.revenue - soldData.cost;
+                    {reportGrouping === 'product' ? (
+                      supplierAllProductIds.size > 0 ? (
+                        <div className="table-container">
+                          <table className="custom-table" style={{ fontSize: '0.8rem' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ paddingLeft: '1rem' }}>Product Details</th>
+                                <th style={{ textAlign: 'center', width: '90px' }}>Purchased Qty</th>
+                                <th style={{ textAlign: 'center', width: '90px' }}>Sold Qty</th>
+                                <th style={{ textAlign: 'center', width: '90px' }}>Current Stock</th>
+                                <th style={{ textAlign: 'right', width: '110px' }}>Revenue (₹)</th>
+                                <th style={{ textAlign: 'right', width: '110px' }}>Profit/Loss (₹)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Array.from(supplierAllProductIds).map(prodId => {
+                                const prod = products.find(p => p.id === prodId);
+                                if (!prod) return null;
 
-                              const totalStock = prod.variations && prod.variations.length > 0
-                                ? prod.variations.reduce((acc, v) => acc + v.currentStock, 0)
-                                : prod.currentStock;
+                                const purchasedQty = productPurchaseQtyMap[prodId] || 0;
+                                const soldData = productSalesMap[prodId] || { qty: 0, revenue: 0, cost: 0 };
+                                const productProfit = soldData.revenue - soldData.cost;
 
-                              return (
-                                <tr key={prodId} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.03)' }}>
-                                  <td style={{ paddingLeft: '1rem', fontWeight: 600 }}>
-                                    {prod.name}
-                                    <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 400 }}>
-                                      Category: {prod.category} &bull; Unit: {prod.unit}
-                                    </span>
-                                  </td>
-                                  <td style={{ textAlign: 'center', fontWeight: 500 }}>
-                                    {Number(purchasedQty.toFixed(3))} {prod.unit}
-                                  </td>
-                                  <td style={{ textAlign: 'center', fontWeight: 500, color: soldData.qty > 0 ? 'var(--info)' : 'inherit' }}>
-                                    {Number(soldData.qty.toFixed(3))} {prod.unit}
-                                  </td>
-                                  <td style={{ textAlign: 'center' }}>
-                                    <span style={{ fontWeight: 600, color: totalStock <= prod.minStockAlert ? 'var(--warning)' : 'var(--success)' }}>
-                                      {Number(totalStock.toFixed(3))} {prod.unit}
-                                    </span>
-                                  </td>
-                                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                                    ₹{soldData.revenue.toFixed(2)}
-                                  </td>
-                                  <td style={{ textAlign: 'right', fontWeight: 700, color: productProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                                    {productProfit >= 0 ? '+' : ''}₹{productProfit.toFixed(2)}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                                const totalStock = prod.variations && prod.variations.length > 0
+                                  ? prod.variations.reduce((acc, v) => acc + v.currentStock, 0)
+                                  : prod.currentStock;
+
+                                return (
+                                  <tr key={prodId} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.03)' }}>
+                                    <td style={{ paddingLeft: '1rem', fontWeight: 600 }}>
+                                      {prod.name}
+                                      <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 400 }}>
+                                        Category: {prod.category} &bull; Unit: {prod.unit}
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: 'center', fontWeight: 500 }}>
+                                      {Number(purchasedQty.toFixed(3))} {prod.unit}
+                                    </td>
+                                    <td style={{ textAlign: 'center', fontWeight: 500, color: soldData.qty > 0 ? 'var(--info)' : 'inherit' }}>
+                                      {Number(soldData.qty.toFixed(3))} {prod.unit}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                      <span style={{ fontWeight: 600, color: totalStock <= prod.minStockAlert ? 'var(--warning)' : 'var(--success)' }}>
+                                        {Number(totalStock.toFixed(3))} {prod.unit}
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                      ₹{soldData.revenue.toFixed(2)}
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 700, color: productProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                                      {productProfit >= 0 ? '+' : ''}₹{productProfit.toFixed(2)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: 'var(--border-radius-sm)' }}>
+                          No product transaction records found for this supplier in the selected period.
+                        </div>
+                      )
                     ) : (
-                      <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: 'var(--border-radius-sm)' }}>
-                        No product transaction records found for this supplier in the selected period.
-                      </div>
+                      supplierAllProductVariations.length > 0 ? (
+                        <div className="table-container">
+                          <table className="custom-table" style={{ fontSize: '0.8rem' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ paddingLeft: '1rem' }}>Product & Variation Details</th>
+                                <th style={{ textAlign: 'center', width: '90px' }}>Purchased Qty</th>
+                                <th style={{ textAlign: 'center', width: '90px' }}>Sold Qty</th>
+                                <th style={{ textAlign: 'center', width: '90px' }}>Current Stock</th>
+                                <th style={{ textAlign: 'right', width: '110px' }}>Revenue (₹)</th>
+                                <th style={{ textAlign: 'right', width: '110px' }}>Profit/Loss (₹)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {supplierAllProductVariations.map(item => {
+                                const prod = products.find(p => p.id === item.productId);
+                                if (!prod) return null;
+
+                                const purchasedQty = productVariationPurchaseQtyMap[item.key] || 0;
+                                const soldData = productVariationSalesMap[item.key] || { qty: 0, revenue: 0, cost: 0 };
+                                const variationProfit = soldData.revenue - soldData.cost;
+
+                                let currentStock = 0;
+                                if (item.variationId && prod.variations) {
+                                  const v = prod.variations.find(varItem => varItem.id === item.variationId);
+                                  currentStock = v ? v.currentStock : 0;
+                                } else {
+                                  currentStock = prod.currentStock;
+                                }
+
+                                return (
+                                  <tr key={item.key} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.03)' }}>
+                                    <td style={{ paddingLeft: '1rem', fontWeight: 600 }}>
+                                      {prod.name}
+                                      <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 600, marginTop: '0.1rem' }}>
+                                        Mark: {item.variationMark || 'Default Variation'}
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: 'center', fontWeight: 500 }}>
+                                      {Number(purchasedQty.toFixed(3))} {prod.unit}
+                                    </td>
+                                    <td style={{ textAlign: 'center', fontWeight: 500, color: soldData.qty > 0 ? 'var(--info)' : 'inherit' }}>
+                                      {Number(soldData.qty.toFixed(3))} {prod.unit}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                      <span style={{ fontWeight: 600, color: currentStock <= prod.minStockAlert ? 'var(--warning)' : 'var(--success)' }}>
+                                        {Number(currentStock.toFixed(3))} {prod.unit}
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                      ₹{soldData.revenue.toFixed(2)}
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 700, color: variationProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                                      {variationProfit >= 0 ? '+' : ''}₹{variationProfit.toFixed(2)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: 'var(--border-radius-sm)' }}>
+                          No variation transaction records found for this supplier in the selected period.
+                        </div>
+                      )
                     )}
                   </div>
                 )}
@@ -1648,25 +2060,38 @@ export const Purchases: React.FC = () => {
                   {settings.gstin && <p style={{ margin: '2px 0', fontSize: '11px', fontWeight: 'bold' }}>GSTIN: {settings.gstin}</p>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0 0 4px 0' }}>SUPPLIER ACCOUNT LEDGER</h3>
+                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0 0 4px 0' }}>{selectedLedgerSupplier.id === 'ALL' ? 'CONSOLIDATED SUPPLIER ACCOUNT LEDGER' : 'SUPPLIER ACCOUNT LEDGER'}</h3>
                   <p style={{ margin: '2px 0', fontSize: '11px' }}><strong>Print Date:</strong> {new Date().toLocaleString()}</p>
                   <p style={{ margin: '2px 0', fontSize: '11px' }}><strong>Period:</strong> {ledgerFilterType.toUpperCase()}</p>
+                  {ledgerProductFilter !== 'all' && (
+                    <p style={{ margin: '2px 0', fontSize: '11px' }}>
+                      <strong>Product:</strong> {products.find(p => p.id === ledgerProductFilter)?.name}
+                    </p>
+                  )}
+                  {ledgerMarkFilter !== 'all' && (
+                    <p style={{ margin: '2px 0', fontSize: '11px' }}>
+                      <strong>Mark:</strong> {ledgerMarkFilter}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '1rem', border: '1px solid #000', padding: '8px', fontSize: '11px' }}>
                 <div>
-                  <strong>SUPPLIER PROFILE:</strong>
+                  <strong>{selectedLedgerSupplier.id === 'ALL' ? 'ACCOUNT SUMMARY:' : 'SUPPLIER PROFILE:'}</strong>
                   <div><strong>{selectedLedgerSupplier.name}</strong></div>
-                  <div>Phone: {selectedLedgerSupplier.phone}</div>
-                  {selectedLedgerSupplier.address && <div>Address: {selectedLedgerSupplier.address}</div>}
+                  {selectedLedgerSupplier.id !== 'ALL' && <div>Phone: {selectedLedgerSupplier.phone}</div>}
+                  {selectedLedgerSupplier.id !== 'ALL' && selectedLedgerSupplier.address && <div>Address: {selectedLedgerSupplier.address}</div>}
+                  {selectedLedgerSupplier.id === 'ALL' && <div>Scope: All Registered Suppliers</div>}
                 </div>
                 <div>
                   <strong>LEDGER SUMMARY:</strong>
-                  <div>Total Purchases: ₹{totalPurchaseCost.toFixed(2)}</div>
+                  <div>Total Purchases (Stock In): ₹{totalPurchaseCost.toFixed(2)} ({Number(totalStockPurchased.toFixed(3))} Units)</div>
+                  <div>Total Sales (Stock Out): ₹{totalSalesRevenue.toFixed(2)} ({Number(totalSalesQty.toFixed(3))} Units)</div>
                   <div>Total Paid Amount: ₹{totalPaidAmount.toFixed(2)}</div>
                   <div style={{ fontWeight: 'bold' }}>Outstanding Balance (Due): ₹{balanceDues.toFixed(2)}</div>
-                  <div>Total Stock Purchased: {Number(totalStockPurchased.toFixed(3))} Units</div>
+                  <div>Balance Stock Qty: {Number(currentStockBalanceQty.toFixed(3))} Units</div>
+                  <div>Ledger Stock Value: ₹{ledgerStockValue.toFixed(2)}</div>
                 </div>
               </div>
 
@@ -1698,6 +2123,7 @@ export const Purchases: React.FC = () => {
                           {t.type === 'in' && `📥 Purchase Invoice (${t.status})`}
                           {t.type === 'payment' && `💳 Payment Settlement`}
                           {t.type === 'out' && `📤 Sales Stock Out`}
+                          {selectedLedgerSupplier.id === 'ALL' && t.supplierName && ` [${t.supplierName}]`}
                         </div>
                         {t.type === 'payment' ? (
                           <div style={{ fontSize: '9px', color: '#555', marginTop: '2px' }}>
@@ -1748,18 +2174,29 @@ export const Purchases: React.FC = () => {
                   {settings.gstin && <p style={{ margin: '2px 0', fontSize: '11px', fontWeight: 'bold' }}>GSTIN: {settings.gstin}</p>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0 0 4px 0' }}>SUPPLIER SALES & PROFITABILITY REPORT</h3>
+                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0 0 4px 0' }}>{selectedLedgerSupplier.id === 'ALL' ? 'CONSOLIDATED SALES & PROFITABILITY REPORT' : 'SUPPLIER SALES & PROFITABILITY REPORT'}</h3>
                   <p style={{ margin: '2px 0', fontSize: '11px' }}><strong>Print Date:</strong> {new Date().toLocaleString()}</p>
                   <p style={{ margin: '2px 0', fontSize: '11px' }}><strong>Period:</strong> {ledgerFilterType.toUpperCase()}</p>
+                  {ledgerProductFilter !== 'all' && (
+                    <p style={{ margin: '2px 0', fontSize: '11px' }}>
+                      <strong>Product:</strong> {products.find(p => p.id === ledgerProductFilter)?.name}
+                    </p>
+                  )}
+                  {ledgerMarkFilter !== 'all' && (
+                    <p style={{ margin: '2px 0', fontSize: '11px' }}>
+                      <strong>Mark:</strong> {ledgerMarkFilter}
+                    </p>
+                  )}
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '1rem', border: '1px solid #000', padding: '8px', fontSize: '11px' }}>
                 <div>
-                  <strong>SUPPLIER PROFILE:</strong>
+                  <strong>{selectedLedgerSupplier.id === 'ALL' ? 'ACCOUNT SUMMARY:' : 'SUPPLIER PROFILE:'}</strong>
                   <div><strong>{selectedLedgerSupplier.name}</strong></div>
-                  <div>Phone: {selectedLedgerSupplier.phone}</div>
-                  {selectedLedgerSupplier.address && <div>Address: {selectedLedgerSupplier.address}</div>}
+                  {selectedLedgerSupplier.id !== 'ALL' && <div>Phone: {selectedLedgerSupplier.phone}</div>}
+                  {selectedLedgerSupplier.id !== 'ALL' && selectedLedgerSupplier.address && <div>Address: {selectedLedgerSupplier.address}</div>}
+                  {selectedLedgerSupplier.id === 'ALL' && <div>Scope: All Registered Suppliers</div>}
                 </div>
                 <div>
                   <strong>PROFITABILITY SUMMARY:</strong>
@@ -1773,7 +2210,7 @@ export const Purchases: React.FC = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginBottom: '1rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #000', borderTop: '2px solid #000' }}>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Product Name</th>
+                    <th style={{ padding: '6px', textAlign: 'left' }}>{reportGrouping === 'mark' ? 'Product & Mark Details' : 'Product Name'}</th>
                     <th style={{ padding: '6px', textAlign: 'center', width: '90px' }}>Purchased Qty</th>
                     <th style={{ padding: '6px', textAlign: 'center', width: '90px' }}>Sold Qty</th>
                     <th style={{ padding: '6px', textAlign: 'center', width: '90px' }}>Current Stock</th>
@@ -1782,42 +2219,85 @@ export const Purchases: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.from(supplierAllProductIds).map((prodId) => {
-                    const prod = products.find(p => p.id === prodId);
-                    if (!prod) return null;
-                    
-                    const purchasedQty = productPurchaseQtyMap[prodId] || 0;
-                    const soldData = productSalesMap[prodId] || { qty: 0, revenue: 0, cost: 0 };
-                    const productProfit = soldData.revenue - soldData.cost;
-                    
-                    const totalStock = prod.variations && prod.variations.length > 0
-                      ? prod.variations.reduce((acc, v) => acc + v.currentStock, 0)
-                      : prod.currentStock;
+                  {reportGrouping === 'product' ? (
+                    Array.from(supplierAllProductIds).map((prodId) => {
+                      const prod = products.find(p => p.id === prodId);
+                      if (!prod) return null;
+                      
+                      const purchasedQty = productPurchaseQtyMap[prodId] || 0;
+                      const soldData = productSalesMap[prodId] || { qty: 0, revenue: 0, cost: 0 };
+                      const productProfit = soldData.revenue - soldData.cost;
+                      
+                      const totalStock = prod.variations && prod.variations.length > 0
+                        ? prod.variations.reduce((acc, v) => acc + v.currentStock, 0)
+                        : prod.currentStock;
 
-                    return (
-                      <tr key={prodId} style={{ borderBottom: '1px dashed #ccc' }}>
-                        <td style={{ padding: '6px' }}>
-                          <strong>{prod.name}</strong>
-                          <div style={{ fontSize: '9px', color: '#555' }}>Category: {prod.category}</div>
-                        </td>
-                        <td style={{ padding: '6px', textAlign: 'center' }}>
-                          {Number(purchasedQty.toFixed(3))} {prod.unit}
-                        </td>
-                        <td style={{ padding: '6px', textAlign: 'center' }}>
-                          {Number(soldData.qty.toFixed(3))} {prod.unit}
-                        </td>
-                        <td style={{ padding: '6px', textAlign: 'center' }}>
-                          {Number(totalStock.toFixed(3))} {prod.unit}
-                        </td>
-                        <td style={{ padding: '6px', textAlign: 'right' }}>
-                          ₹{soldData.revenue.toFixed(2)}
-                        </td>
-                        <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>
-                          ₹{productProfit.toFixed(2)}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      return (
+                        <tr key={prodId} style={{ borderBottom: '1px dashed #ccc' }}>
+                          <td style={{ padding: '6px' }}>
+                            <strong>{prod.name}</strong>
+                            <div style={{ fontSize: '9px', color: '#555' }}>Category: {prod.category}</div>
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
+                            {Number(purchasedQty.toFixed(3))} {prod.unit}
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
+                            {Number(soldData.qty.toFixed(3))} {prod.unit}
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
+                            {Number(totalStock.toFixed(3))} {prod.unit}
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'right' }}>
+                            ₹{soldData.revenue.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>
+                            ₹{productProfit.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    supplierAllProductVariations.map((item) => {
+                      const prod = products.find(p => p.id === item.productId);
+                      if (!prod) return null;
+                      
+                      const purchasedQty = productVariationPurchaseQtyMap[item.key] || 0;
+                      const soldData = productVariationSalesMap[item.key] || { qty: 0, revenue: 0, cost: 0 };
+                      const variationProfit = soldData.revenue - soldData.cost;
+                      
+                      let currentStock = 0;
+                      if (item.variationId && prod.variations) {
+                        const v = prod.variations.find(varItem => varItem.id === item.variationId);
+                        currentStock = v ? v.currentStock : 0;
+                      } else {
+                        currentStock = prod.currentStock;
+                      }
+
+                      return (
+                        <tr key={item.key} style={{ borderBottom: '1px dashed #ccc' }}>
+                          <td style={{ padding: '6px' }}>
+                            <strong>{prod.name}</strong>
+                            <div style={{ fontSize: '9px', color: '#555' }}>Mark: {item.variationMark || 'Default Variation'}</div>
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
+                            {Number(purchasedQty.toFixed(3))} {prod.unit}
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
+                            {Number(soldData.qty.toFixed(3))} {prod.unit}
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'center' }}>
+                            {Number(currentStock.toFixed(3))} {prod.unit}
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'right' }}>
+                            ₹{soldData.revenue.toFixed(2)}
+                          </td>
+                          <td style={{ padding: '6px', textAlign: 'right', fontWeight: 'bold' }}>
+                            ₹{variationProfit.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
