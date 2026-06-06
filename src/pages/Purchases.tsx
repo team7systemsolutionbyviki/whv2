@@ -49,6 +49,8 @@ export const Purchases: React.FC = () => {
   // Vehicle & Delivery details
   const [vehicleNo, setVehicleNo] = useState('');
   const [deliveryPersonPhone, setDeliveryPersonPhone] = useState('');
+  const [lotNo, setLotNo] = useState('');
+  const [vehicleMark, setVehicleMark] = useState('');
 
   const formatPurchaseUnit = (unitStr: string) => {
     const u = (unitStr || '').toLowerCase().trim();
@@ -375,6 +377,8 @@ export const Purchases: React.FC = () => {
       coolie,
       vehicleNo: vehicleNo || undefined,
       deliveryPersonPhone: deliveryPersonPhone || undefined,
+      lotNo: lotNo || undefined,
+      vehicleMark: vehicleMark || undefined,
       total: finalTotal,
       paymentStatus,
       dueAmount: paymentStatus === 'Due' ? finalTotal : 0
@@ -392,6 +396,8 @@ export const Purchases: React.FC = () => {
     setCoolie(0);
     setVehicleNo('');
     setDeliveryPersonPhone('');
+    setLotNo('');
+    setVehicleMark('');
     showToast(`Purchase ${invoiceNo} recorded. Stock auto-updated!`, 'success');
   };
 
@@ -691,6 +697,8 @@ export const Purchases: React.FC = () => {
       refNo: p.invoiceNo,
       vehicleNo: p.vehicleNo || undefined,
       deliveryPersonPhone: p.deliveryPersonPhone || undefined,
+      lotNo: p.lotNo || undefined,
+      vehicleMark: p.vehicleMark || undefined,
       customerName: undefined as string | undefined,
       items: p.items.map(item => ({
         productId: item.productId,
@@ -720,6 +728,8 @@ export const Purchases: React.FC = () => {
       refNo: pm.referenceNo || 'N/A',
       vehicleNo: undefined as string | undefined,
       deliveryPersonPhone: undefined as string | undefined,
+      lotNo: undefined as string | undefined,
+      vehicleMark: undefined as string | undefined,
       customerName: undefined as string | undefined,
       items: [] as any[],
       discount: 0,
@@ -739,6 +749,8 @@ export const Purchases: React.FC = () => {
       refNo: s.invoiceNo,
       vehicleNo: undefined as string | undefined,
       deliveryPersonPhone: undefined as string | undefined,
+      lotNo: undefined as string | undefined,
+      vehicleMark: undefined as string | undefined,
       customerName: s.customerName,
       items: s.items.map(item => {
         const itemDiscount = s.subtotal > 0 ? (item.total / s.subtotal) * s.discount : 0;
@@ -1137,6 +1149,29 @@ export const Purchases: React.FC = () => {
                     placeholder="e.g. 9800012345"
                     value={deliveryPersonPhone}
                     onChange={(e) => setDeliveryPersonPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid-2">
+                <div className="form-group">
+                  <label>Lot Number</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. LOT-123"
+                    value={lotNo}
+                    onChange={(e) => setLotNo(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Vehicle Mark</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. MARK-A"
+                    value={vehicleMark}
+                    onChange={(e) => setVehicleMark(e.target.value)}
                   />
                 </div>
               </div>
@@ -1628,6 +1663,13 @@ export const Purchases: React.FC = () => {
                                             {t.coolie > 0 && ` | Coolie: +₹${t.coolie.toFixed(2)}`}
                                           </div>
                                         )}
+                                        {t.type === 'in' && (t.vehicleNo || t.lotNo || t.vehicleMark) && (
+                                          <div style={{ marginTop: '0.2rem', color: 'var(--text-muted)', fontSize: '0.7rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', background: 'var(--bg-input)', padding: '0.2rem 0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)', width: 'fit-content' }}>
+                                            {t.vehicleNo && <span>🚚 Vehicle: {t.vehicleNo}</span>}
+                                            {t.lotNo && <span>📦 Lot: {t.lotNo}</span>}
+                                            {t.vehicleMark && <span>🏷️ Mark: {t.vehicleMark}</span>}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </td>
@@ -1883,6 +1925,8 @@ export const Purchases: React.FC = () => {
                     <th>Supplier Invoice No</th>
                     <th>Vehicle No</th>
                     <th>Delivery Person Phone</th>
+                    <th>Lot No</th>
+                    <th>Vehicle Mark</th>
                     <th style={{ textAlign: 'right' }}>Total Cost</th>
                     <th style={{ textAlign: 'center' }}>Status</th>
                     <th style={{ textAlign: 'center' }}>Actions</th>
@@ -1900,6 +1944,8 @@ export const Purchases: React.FC = () => {
                           <td style={{ fontFamily: 'Courier New', fontWeight: 600 }}>{pur.invoiceNo}</td>
                           <td>{pur.vehicleNo || <span style={{ color: 'var(--text-muted)' }}>-</span>}</td>
                           <td>{pur.deliveryPersonPhone || <span style={{ color: 'var(--text-muted)' }}>-</span>}</td>
+                          <td>{pur.lotNo || <span style={{ color: 'var(--text-muted)' }}>-</span>}</td>
+                          <td>{pur.vehicleMark || <span style={{ color: 'var(--text-muted)' }}>-</span>}</td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{pur.total.toFixed(2)}</td>
                           <td style={{ textAlign: 'center' }}>
                             <span className={`badge ${pur.paymentStatus === 'Due' ? 'badge-danger' : 'badge-success'}`}>
@@ -1979,6 +2025,8 @@ export const Purchases: React.FC = () => {
                       <h4 style={{ fontWeight: 600, borderBottom: '1px solid #ddd', paddingBottom: '0.2rem', marginBottom: '0.4rem', fontSize: '0.75rem', color: '#4b5563' }}>TRANSPORT & DELIVERY:</h4>
                       <p style={{ margin: '0.25rem 0' }}><strong>Vehicle No:</strong> {selectedPurchase.vehicleNo || 'Not Specified'}</p>
                       <p style={{ margin: '0.25rem 0' }}><strong>Delivery Person Phone:</strong> {selectedPurchase.deliveryPersonPhone || 'Not Specified'}</p>
+                      <p style={{ margin: '0.25rem 0' }}><strong>Lot No:</strong> {selectedPurchase.lotNo || 'Not Specified'}</p>
+                      <p style={{ margin: '0.25rem 0' }}><strong>Vehicle Mark:</strong> {selectedPurchase.vehicleMark || 'Not Specified'}</p>
                     </div>
                   </div>
 
@@ -2080,6 +2128,8 @@ export const Purchases: React.FC = () => {
               <strong>TRANSPORT & DELIVERY:</strong>
               <div>Vehicle No: {selectedPurchase.vehicleNo || 'Not Specified'}</div>
               <div>Delivery Phone: {selectedPurchase.deliveryPersonPhone || 'Not Specified'}</div>
+              <div>Lot No: {selectedPurchase.lotNo || 'Not Specified'}</div>
+              <div>Vehicle Mark: {selectedPurchase.vehicleMark || 'Not Specified'}</div>
             </div>
           </div>
 
@@ -2231,6 +2281,13 @@ export const Purchases: React.FC = () => {
                                 Subtotal: ₹{t.subtotal.toFixed(2)}
                                 {t.discount > 0 && ` | Discount: -₹${t.discount.toFixed(2)}`}
                                 {t.coolie > 0 && ` | Coolie: +₹${t.coolie.toFixed(2)}`}
+                              </div>
+                            )}
+                            {t.type === 'in' && (t.vehicleNo || t.lotNo || t.vehicleMark) && (
+                              <div style={{ marginTop: '2px', color: '#555', fontSize: '8.5px', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                {t.vehicleNo && <span>Vehicle: {t.vehicleNo}</span>}
+                                {t.lotNo && <span>Lot: {t.lotNo}</span>}
+                                {t.vehicleMark && <span>Mark: {t.vehicleMark}</span>}
                               </div>
                             )}
                           </div>

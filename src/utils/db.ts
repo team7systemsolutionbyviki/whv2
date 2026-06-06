@@ -89,6 +89,8 @@ export interface Purchase {
   coolie?: number;
   vehicleNo?: string;
   deliveryPersonPhone?: string;
+  lotNo?: string;
+  vehicleMark?: string;
   total: number;
   paymentStatus: 'Paid' | 'Due';
   dueAmount: number;
