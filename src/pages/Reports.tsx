@@ -349,6 +349,9 @@ export const Reports: React.FC = () => {
         soldBags: number;
         salesPrice: number;
         unit: string;
+        lotNo: string;
+        supplierNames: string[];
+        customerNames: string[];
       }
     } = {};
 
@@ -360,6 +363,7 @@ export const Reports: React.FC = () => {
     );
 
     matchingPurchases.forEach(p => {
+      const supName = suppliers.find(s => s.id === p.supplierId)?.name || p.supplierId;
       p.items.forEach(item => {
         const key = `${item.productId}-${item.variationId || ''}`;
         const prod = products.find(x => x.id === item.productId);
@@ -375,6 +379,9 @@ export const Reports: React.FC = () => {
           itemsMap[key].purchasePrice = itemsMap[key].purchasedQty > 0 
             ? (prevTotal + item.total) / itemsMap[key].purchasedQty 
             : item.purchasePrice;
+          if (supName && !itemsMap[key].supplierNames.includes(supName)) {
+            itemsMap[key].supplierNames.push(supName);
+          }
         } else {
           itemsMap[key] = {
             productId: item.productId,
@@ -387,7 +394,10 @@ export const Reports: React.FC = () => {
             soldQty: 0,
             soldBags: 0,
             salesPrice: 0,
-            unit
+            unit,
+            lotNo: p.lotNo || selectedConsignment.lotNo || '-',
+            supplierNames: supName ? [supName] : [],
+            customerNames: []
           };
         }
       });
@@ -405,12 +415,15 @@ export const Reports: React.FC = () => {
           itemsMap[key].salesPrice = itemsMap[key].soldQty > 0 
             ? (prevTotal + item.total) / itemsMap[key].soldQty 
             : item.salesPrice;
+          if (s.customerName && !itemsMap[key].customerNames.includes(s.customerName)) {
+            itemsMap[key].customerNames.push(s.customerName);
+          }
         }
       });
     });
 
     return Object.values(itemsMap);
-  }, [selectedConsignment, purchases, sales, products]);
+  }, [selectedConsignment, purchases, sales, products, suppliers]);
 
   // Filter & Sort consignment items
   const filteredSortedPattiItems = React.useMemo(() => {
@@ -432,6 +445,18 @@ export const Reports: React.FC = () => {
         case 'name':
           valA = a.name + (a.variationMark || '');
           valB = b.name + (b.variationMark || '');
+          break;
+        case 'lotNo':
+          valA = a.lotNo || '';
+          valB = b.lotNo || '';
+          break;
+        case 'supplierNames':
+          valA = a.supplierNames.join(', ').toLowerCase();
+          valB = b.supplierNames.join(', ').toLowerCase();
+          break;
+        case 'customerNames':
+          valA = a.customerNames.join(', ').toLowerCase();
+          valB = b.customerNames.join(', ').toLowerCase();
           break;
         case 'purchasedQty':
           valA = a.purchasedQty;
@@ -1179,18 +1204,40 @@ export const Reports: React.FC = () => {
       const salesVal = parseFloat(adjSales) || 0;
       const purchVal = parseFloat(adjPurchases) || 0;
       const grandTotal = salesVal - purchVal - totalExp;
-      rows = [[
-        selectedConsignment?.vehicleNo || 'Manual',
-        selectedConsignment?.vehicleMark || 'Manual',
-        selectedConsignment?.lotNo || 'Manual',
-        salesVal.toFixed(2),
-        purchVal.toFixed(2),
-        rent.toFixed(2),
-        loading.toFixed(2),
-        comm.toFixed(2),
-        other.toFixed(2),
-        grandTotal.toFixed(2)
-      ]];
+      rows = [
+        [
+          selectedConsignment?.vehicleNo || 'Manual',
+          selectedConsignment?.vehicleMark || 'Manual',
+          selectedConsignment?.lotNo || 'Manual',
+          salesVal.toFixed(2),
+          purchVal.toFixed(2),
+          rent.toFixed(2),
+          loading.toFixed(2),
+          comm.toFixed(2),
+          other.toFixed(2),
+          grandTotal.toFixed(2)
+        ],
+        [],
+        ['CONSIGNMENT ITEMS BREAKDOWN'],
+        [
+          'Item / Mark', 'Lot No', 'Purchase Supplier', 'Sales Customer', 
+          'Purchased Qty', 'Sold Qty', 'Balance Stock', 
+          'Cost Price (INR)', 'Sale Price (INR)', 'Total Cost (INR)', 'Total Sale (INR)'
+        ],
+        ...pattiItems.map(item => [
+          `${item.name}${item.variationMark ? ` (${item.variationMark})` : ''}`,
+          item.lotNo,
+          item.supplierNames.join('; ') || '-',
+          item.customerNames.join('; ') || '-',
+          item.purchasedQty.toFixed(1),
+          item.soldQty.toFixed(1),
+          (item.purchasedQty - item.soldQty).toFixed(1),
+          item.purchasePrice.toFixed(2),
+          item.salesPrice.toFixed(2),
+          (item.purchasedQty * item.purchasePrice).toFixed(2),
+          (item.soldQty * item.salesPrice).toFixed(2)
+        ])
+      ];
       fileName = `Patti_Bill_${selectedConsignment?.vehicleNo || 'Manual'}.csv`;
     } else {
       // Staff Wise Report
@@ -1331,6 +1378,9 @@ export const Reports: React.FC = () => {
             <thead>
               <tr style={{ background: '#f3f4f6', borderBottom: '1px solid #d1d5db' }}>
                 <th style={{ padding: '6px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Item / Mark</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Lot No</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Purchase Supplier</th>
+                <th style={{ padding: '6px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Sales Customer</th>
                 <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Purchased Qty</th>
                 <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Sold Qty</th>
                 <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Bal Stock</th>
@@ -1346,6 +1396,9 @@ export const Reports: React.FC = () => {
                 return (
                   <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
                     <td style={{ padding: '6px 8px', border: '1px solid #ddd', fontWeight: 600 }}>{item.name} {item.variationMark ? `(${item.variationMark})` : ''}</td>
+                    <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>{item.lotNo}</td>
+                    <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>{item.supplierNames.length > 0 ? item.supplierNames.join(', ') : '-'}</td>
+                    <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>{item.customerNames.length > 0 ? item.customerNames.join(', ') : '-'}</td>
                     <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{item.purchasedQty} {item.unit}</td>
                     <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{item.soldQty} {item.unit}</td>
                     <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 600 }}>{balQty} {item.unit}</td>
@@ -3014,6 +3067,15 @@ export const Reports: React.FC = () => {
                         <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePattiSort('name')}>
                           Item / Mark {pattiSortKey === 'name' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
                         </th>
+                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePattiSort('lotNo')}>
+                          Lot No {pattiSortKey === 'lotNo' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                        </th>
+                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePattiSort('supplierNames')}>
+                          Purchase Supplier {pattiSortKey === 'supplierNames' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                        </th>
+                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePattiSort('customerNames')}>
+                          Sales Customer {pattiSortKey === 'customerNames' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                        </th>
                         <th style={{ cursor: 'pointer', textAlign: 'center', userSelect: 'none' }} onClick={() => handlePattiSort('purchasedQty')}>
                           Purchased Qty {pattiSortKey === 'purchasedQty' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
                         </th>
@@ -3024,10 +3086,10 @@ export const Reports: React.FC = () => {
                           Balance Stock {pattiSortKey === 'balanceStock' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
                         </th>
                         <th style={{ cursor: 'pointer', textAlign: 'right', userSelect: 'none' }} onClick={() => handlePattiSort('purchasePrice')}>
-                          Purchase Rate {pattiSortKey === 'purchasePrice' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                          Cost Price {pattiSortKey === 'purchasePrice' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
                         </th>
                         <th style={{ cursor: 'pointer', textAlign: 'right', userSelect: 'none' }} onClick={() => handlePattiSort('salesPrice')}>
-                          Sales Rate {pattiSortKey === 'salesPrice' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                          Sales Price {pattiSortKey === 'salesPrice' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
                         </th>
                         <th style={{ cursor: 'pointer', textAlign: 'right', userSelect: 'none' }} onClick={() => handlePattiSort('totalPurchase')}>
                           Total Cost {pattiSortKey === 'totalPurchase' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -3053,6 +3115,21 @@ export const Reports: React.FC = () => {
                                   {item.variationMark}
                                 </span>
                               )}
+                            </td>
+                            <td>
+                              <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                {item.lotNo}
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ fontSize: '0.8rem', fontWeight: 500 }}>
+                                {item.supplierNames.length > 0 ? item.supplierNames.join(', ') : '-'}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                {item.customerNames.length > 0 ? item.customerNames.join(', ') : '-'}
+                              </div>
                             </td>
                             <td style={{ textAlign: 'center' }}>
                               {item.purchasedQty.toFixed(1)} {item.unit}
@@ -3087,7 +3164,7 @@ export const Reports: React.FC = () => {
                       })}
                       {filteredSortedPattiItems.length === 0 && (
                         <tr>
-                          <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                          <td colSpan={11} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                             No items found matching the filter search.
                           </td>
                         </tr>
