@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
-import { Sale, Product } from '../utils/db';
+import { Sale, Product, DB } from '../utils/db';
 import { X, Printer, Share2, FileText, Smartphone } from 'lucide-react';
 
 interface PrintPreviewModalProps {
@@ -53,6 +53,11 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
   };
 
   const taxDetails = calculateTaxable();
+
+  // Get dealer outstanding balance due (if credit/dealer sale)
+  const dealerForSale = sale.dealerId ? DB.getDealers().find(d => d.id === sale.dealerId) : null;
+  // Balance due = dealer's current outstanding (already updated after this sale)
+  const balanceDue = dealerForSale ? dealerForSale.outstanding : 0;
 
   const calculateTotalWeight = () => {
     return sale.items.reduce((sum, item) => sum + (item.weight || 0), 0);
@@ -195,6 +200,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                   <span>Grand Total:</span>
                   <span>₹{sale.total.toFixed(2)}</span>
                 </div>
+                {balanceDue > 0 && (
+                  <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 700, borderTop: '1px dashed #dc2626', paddingTop: '0.35rem', marginTop: '0.1rem' }}>
+                    <span>⚠ Balance Due (Outstanding):</span>
+                    <span>₹{balanceDue.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
               
               <div style={{ marginTop: '2rem', alignSelf: 'flex-end', width: '180px', textAlign: 'center' }}>
@@ -284,6 +295,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <span>GRAND TOTAL:</span>
               <span>₹{sale.total.toFixed(2)}</span>
             </div>
+            {balanceDue > 0 && (
+              <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 'bold', borderTop: '1px dashed #dc2626', paddingTop: '3px', marginTop: '1px' }}>
+                <span>BALANCE DUE:</span>
+                <span>₹{balanceDue.toFixed(2)}</span>
+              </div>
+            )}
           </div>
 
           <div className="print-divider"></div>
@@ -417,6 +434,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                   <span>Grand Total:</span>
                   <span>₹{sale.total.toFixed(2)}</span>
                 </div>
+                {balanceDue > 0 && (
+                  <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 700, borderTop: '1px dashed #dc2626', paddingTop: '0.25rem', marginTop: '0.1rem', fontSize: '0.85rem' }}>
+                    <span>⚠ Balance Due:</span>
+                    <span>₹{balanceDue.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
               
               <div style={{ marginTop: '0.5rem', alignSelf: 'flex-end', width: '110px', textAlign: 'center' }}>
@@ -529,6 +552,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <span>GRAND TOTAL:</span>
             <span>₹{sale.total.toFixed(2)}</span>
           </div>
+          {balanceDue > 0 && (
+            <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 'bold', borderTop: '1px dashed #dc2626', paddingTop: '3px', marginTop: '1px' }}>
+              <span>BALANCE DUE:</span>
+              <span>₹{balanceDue.toFixed(2)}</span>
+            </div>
+          )}
         </div>
 
         <div className="print-divider"></div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp, CartItem } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { DB, Product, Sale, ProductVariation } from '../utils/db';
+import { DB, Product, Sale, ProductVariation, Dealer } from '../utils/db';
 import { 
   Search, 
   Barcode, 
@@ -67,7 +67,7 @@ export const POS: React.FC = () => {
   const [cashPaid, setCashPaid] = useState<number>(0);
   const [upiPaid, setUpiPaid] = useState<number>(0);
   const [cardPaid, setCardPaid] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card' | 'Mixed' | 'Credit'>('Cash');
+  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card' | 'Mixed'>('Cash');
   const [selectedDealerId, setSelectedDealerId] = useState<string>('');
 
   // Return Form States
@@ -78,6 +78,12 @@ export const POS: React.FC = () => {
 
   // Print state after payment
   const [justCompletedSale, setJustCompletedSale] = useState<Sale | null>(null);
+
+  // Customer & Phone Suggestions
+  const [customerSuggestions, setCustomerSuggestions] = useState<Dealer[]>([]);
+  const customerSuggestionsRef = useRef<HTMLDivElement>(null);
+  const [phoneSuggestions, setPhoneSuggestions] = useState<Dealer[]>([]);
+  const phoneSuggestionsRef = useRef<HTMLDivElement>(null);
 
   // Focus barcode input on load
   useEffect(() => {
@@ -98,6 +104,28 @@ export const POS: React.FC = () => {
       setSearchResults([]);
     }
   }, [productSearch, products]);
+
+  // Click outside listener for customer and phone suggestions dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        customerSuggestionsRef.current &&
+        !customerSuggestionsRef.current.contains(event.target as Node)
+      ) {
+        setCustomerSuggestions([]);
+      }
+      if (
+        phoneSuggestionsRef.current &&
+        !phoneSuggestionsRef.current.contains(event.target as Node)
+      ) {
+        setPhoneSuggestions([]);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const getCartItemPrice = (item: any) => {
     if (item.customPrice !== undefined) return item.customPrice;
@@ -195,15 +223,24 @@ export const POS: React.FC = () => {
   const handleCompleteSale = () => {
     const totalPaid = Number(cashPaid) + Number(upiPaid) + Number(cardPaid);
     
-    if (paymentMethod !== 'Mixed' && paymentMethod !== 'Credit' && totalPaid < cartTotal) {
+    if (paymentMethod !== 'Mixed' && totalPaid < cartTotal) {
       showToast(`Insufficient payment amount (Paid: ₹${totalPaid}, Due: ₹${cartTotal})`, 'warning');
       return;
     }
 
-    if (paymentMethod === 'Credit' && !selectedDealerId) {
-      showToast('Please select a dealer to record credit sale outstanding', 'warning');
-      return;
+    // Double check stock before saving to make sure stock doesn't go below zero
+    for (const item of retailCart) {
+      const prod = products.find(p => p.id === item.product.id);
+      if (!prod) continue;
+      const stockLimit = item.variation
+        ? prod.variations?.find(v => v.id === item.variation?.id)?.currentStock || 0
+        : prod.currentStock;
+      if (item.qty > stockLimit) {
+        showToast(`Error: Insufficient stock for ${item.product.name} (Available: ${stockLimit})`, 'danger');
+        return;
+      }
     }
+
 
     const matchedDealer = dealers.find(d => d.id === selectedDealerId);
 
@@ -211,8 +248,8 @@ export const POS: React.FC = () => {
       id: 'S-' + Date.now(),
       invoiceNo: settings.invoicePrefix + new Date().getFullYear() + '-' + Date.now().toString().slice(-4),
       date: new Date().toISOString(),
-      customerName: paymentMethod === 'Credit' && matchedDealer ? matchedDealer.name : customerName,
-      customerPhone: paymentMethod === 'Credit' && matchedDealer ? matchedDealer.phone : (customerPhone || undefined),
+      customerName: customerName,
+      customerPhone: customerPhone || undefined,
       items: retailCart.map(item => {
         const price = getCartItemPrice(item);
         const name = item.variation ? `${item.product.name} (${item.variation.mark})` : item.product.name;
@@ -244,7 +281,7 @@ export const POS: React.FC = () => {
       },
       status: 'completed',
       type: 'retail',
-      dealerId: paymentMethod === 'Credit' ? selectedDealerId : undefined,
+      dealerId: undefined,
       createdBy: user?.email || 'Unknown'
     };
 
@@ -307,6 +344,12 @@ export const POS: React.FC = () => {
           const pIdx = productsList.findIndex(p => p.id === prodId);
           if (pIdx >= 0) {
             productsList[pIdx].currentStock += qty;
+            if (item.variationId && productsList[pIdx].variations) {
+              const vIdx = productsList[pIdx].variations!.findIndex(v => v.id === item.variationId);
+              if (vIdx >= 0) {
+                productsList[pIdx].variations![vIdx].currentStock += qty;
+              }
+            }
           }
 
           // Add history log
@@ -368,6 +411,45 @@ export const POS: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* 15-Day Due Reminder Banner */}
+      {(() => {
+        const overdueCustomers = dealers.filter(d => {
+          if (d.outstanding <= 0) return false;
+          const dealerSales = DB.getSales().filter(s => s.dealerId === d.id && s.status === 'completed');
+          if (dealerSales.length === 0) return true;
+          const latestDate = dealerSales.reduce((max, s) => s.date > max ? s.date : max, '');
+          const days = Math.floor((Date.now() - new Date(latestDate).getTime()) / (1000 * 60 * 60 * 24));
+          return days >= 15;
+        });
+        if (overdueCustomers.length === 0) return null;
+        return (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.75rem 1.25rem',
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: 'var(--border-radius-md)',
+            fontSize: '0.85rem',
+            color: 'var(--danger)',
+            flexWrap: 'wrap'
+          }}>
+            <span style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              ⚠️ {overdueCustomers.length} customer{overdueCustomers.length > 1 ? 's' : ''} with overdue balance (15+ days):
+            </span>
+            {overdueCustomers.slice(0, 3).map(d => (
+              <span key={d.id} style={{ background: 'rgba(239,68,68,0.15)', padding: '0.15rem 0.5rem', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 600 }}>
+                {d.name} — ₹{d.outstanding.toFixed(0)}
+              </span>
+            ))}
+            {overdueCustomers.length > 3 && (
+              <span style={{ fontSize: '0.78rem' }}>+{overdueCustomers.length - 3} more</span>
+            )}
+          </div>
+        );
+      })()}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1.5rem', alignItems: 'start' }}>
         {/* Left Side: Product Search & Scanner */}
@@ -491,17 +573,97 @@ export const POS: React.FC = () => {
         <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Customer Details input */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
+            <div ref={customerSuggestionsRef} className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
               <label>Customer Name</label>
               <input
                 type="text"
                 className="form-control"
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerName(val);
+                  if (val.trim()) {
+                    const filtered = dealers.filter(d =>
+                      (d.name || '').toLowerCase().includes(val.toLowerCase()) ||
+                      (d.phone && d.phone.includes(val))
+                    );
+                    setCustomerSuggestions(filtered.slice(0, 5));
+                  } else {
+                    setCustomerSuggestions(dealers.slice(0, 5));
+                  }
+                }}
+                onFocus={() => {
+                  const val = customerName.trim();
+                  if (val) {
+                    const filtered = dealers.filter(d =>
+                      (d.name || '').toLowerCase().includes(val.toLowerCase()) ||
+                      (d.phone && d.phone.includes(val))
+                    );
+                    setCustomerSuggestions(filtered.slice(0, 5));
+                  } else {
+                    setCustomerSuggestions(dealers.slice(0, 5));
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setCustomerSuggestions([]);
+                  }
+                }}
               />
+              {customerSuggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  backgroundColor: 'var(--bg-input)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--border-radius-sm)',
+                  boxShadow: '0 8px 16px rgba(0, 0, 0, 0.25)',
+                  zIndex: 1000,
+                  maxHeight: '220px',
+                  overflowY: 'auto',
+                  marginTop: '4px'
+                }}>
+                  {customerSuggestions.map(d => (
+                    <div
+                      key={d.id}
+                      className="glass-panel-hover"
+                      style={{
+                        padding: '0.6rem 0.8rem',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid var(--border-color)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                        transition: 'background 0.2s'
+                      }}
+                      onClick={() => {
+                        setCustomerName(d.name);
+                        setCustomerPhone(d.phone || '');
+                        setCustomerSuggestions([]);
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{d.name}</span>
+                        {d.outstanding > 0 && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--danger)', fontWeight: 600 }}>
+                            Due: ₹{d.outstanding.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                      {d.phone && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          📞 {d.phone}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
+            <div ref={phoneSuggestionsRef} className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
               <label>Phone Number (WhatsApp Share)</label>
               <input
                 type="text"
@@ -509,8 +671,101 @@ export const POS: React.FC = () => {
                 style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem', fontFamily: 'Courier New' }}
                 placeholder="Enter 10 digit phone..."
                 value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomerPhone(val);
+                  
+                  // Auto-fetch: check for exact phone match
+                  const trimmedVal = val.trim();
+                  if (trimmedVal.length >= 4) {
+                    const exactMatch = dealers.find(d => (d.phone || '').trim() === trimmedVal);
+                    if (exactMatch) {
+                      setCustomerName(exactMatch.name);
+                      setPhoneSuggestions([]);
+                      showToast(`Auto-fetched customer: ${exactMatch.name}`, 'info');
+                      return;
+                    }
+                  }
+
+                  if (trimmedVal) {
+                    const filtered = dealers.filter(d =>
+                      (d.phone || '').includes(trimmedVal) ||
+                      (d.name || '').toLowerCase().includes(trimmedVal.toLowerCase())
+                    );
+                    setPhoneSuggestions(filtered.slice(0, 5));
+                  } else {
+                    setPhoneSuggestions(dealers.slice(0, 5));
+                  }
+                }}
+                onFocus={() => {
+                  const val = customerPhone.trim();
+                  if (val) {
+                    const filtered = dealers.filter(d =>
+                      (d.phone || '').includes(val) ||
+                      (d.name || '').toLowerCase().includes(val.toLowerCase())
+                    );
+                    setPhoneSuggestions(filtered.slice(0, 5));
+                  } else {
+                    setPhoneSuggestions(dealers.slice(0, 5));
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setPhoneSuggestions([]);
+                  }
+                }}
               />
+              {phoneSuggestions.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  backgroundColor: 'var(--bg-input)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--border-radius-sm)',
+                  boxShadow: '0 8px 16px rgba(0, 0, 0, 0.25)',
+                  zIndex: 1000,
+                  maxHeight: '220px',
+                  overflowY: 'auto',
+                  marginTop: '4px'
+                }}>
+                  {phoneSuggestions.map(d => (
+                    <div
+                      key={d.id}
+                      className="glass-panel-hover"
+                      style={{
+                        padding: '0.6rem 0.8rem',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid var(--border-color)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '2px',
+                        transition: 'background 0.2s'
+                      }}
+                      onClick={() => {
+                        setCustomerName(d.name);
+                        setCustomerPhone(d.phone || '');
+                        setPhoneSuggestions([]);
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{d.name}</span>
+                        {d.outstanding > 0 && (
+                          <span style={{ fontSize: '0.7rem', color: 'var(--danger)', fontWeight: 600 }}>
+                            Due: ₹{d.outstanding.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                      {d.phone && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          📞 {d.phone}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -792,8 +1047,8 @@ export const POS: React.FC = () => {
               </div>
 
               {/* Payment Mode Selector tabs */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.25rem' }}>
-                {(['Cash', 'UPI', 'Card', 'Mixed', 'Credit'] as const).map(method => (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.25rem' }}>
+                {(['Cash', 'UPI', 'Card', 'Mixed'] as const).map(method => (
                   <button
                     key={method}
                     type="button"
@@ -805,8 +1060,6 @@ export const POS: React.FC = () => {
                         setCashPaid(0); setUpiPaid(cartTotal); setCardPaid(0);
                       } else if (method === 'Card') {
                         setCashPaid(0); setUpiPaid(0); setCardPaid(cartTotal);
-                      } else if (method === 'Credit') {
-                        setCashPaid(0); setUpiPaid(0); setCardPaid(0);
                       } else {
                         setCashPaid(0); setUpiPaid(0); setCardPaid(0);
                       }
@@ -818,7 +1071,6 @@ export const POS: React.FC = () => {
                     {method === 'UPI' && <Smartphone size={14} />}
                     {method === 'Card' && <CreditCard size={14} />}
                     {method === 'Mixed' && <History size={14} />}
-                    {method === 'Credit' && <RotateCcw size={14} style={{ transform: 'rotate(180deg)' }} />}
                     <span>{method}</span>
                   </button>
                 ))}
@@ -875,23 +1127,6 @@ export const POS: React.FC = () => {
                     </span>
                   </div>
                 </div>
-              ) : paymentMethod === 'Credit' ? (
-                <div className="form-group" style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 600 }}>Select Dealer (Outstanding Credit Profile) *</label>
-                  <select
-                    className="form-control"
-                    required
-                    value={selectedDealerId}
-                    onChange={(e) => setSelectedDealerId(e.target.value)}
-                  >
-                    <option value="">-- Choose Registered Dealer --</option>
-                    {dealers.map(d => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} (PH: {d.phone} | Outstanding: ₹{d.outstanding.toFixed(2)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
               ) : (
                 <div className="form-group">
                   <label>Amount Received *</label>
@@ -927,8 +1162,7 @@ export const POS: React.FC = () => {
                 className="btn btn-primary" 
                 onClick={handleCompleteSale}
                 disabled={
-                  (paymentMethod === 'Mixed' && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) !== cartTotal) ||
-                  (paymentMethod === 'Credit' && !selectedDealerId)
+                  (paymentMethod === 'Mixed' && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) !== cartTotal)
                 }
               >
                 Checkout & Print

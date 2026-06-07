@@ -14,7 +14,8 @@ import {
   ShoppingBag,
   Bell,
   LogOut,
-  TrendingUp
+  TrendingUp,
+  UserCheck
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -29,6 +30,7 @@ export const Sidebar: React.FC = () => {
     { id: 'products' as ActiveTab, name: 'Products', icon: ShoppingBag },
     { id: 'pos' as ActiveTab, name: 'POS Sales', icon: ShoppingCart },
     { id: 'wholesale' as ActiveTab, name: 'Wholesale', icon: Users },
+    { id: 'customers' as ActiveTab, name: 'Customers', icon: UserCheck },
     { id: 'purchases' as ActiveTab, name: 'Purchases', icon: Truck },
     { 
       id: 'inventory' as ActiveTab, 

@@ -28,12 +28,14 @@ export const Inventory: React.FC = () => {
   const [adjustDirection, setAdjustDirection] = useState<'Add' | 'Sub'>('Add');
   const [adjustQty, setAdjustQty] = useState<number>(0);
   const [adjustReason, setAdjustReason] = useState('Manual Stock Take');
+  const [selectedVariationId, setSelectedVariationId] = useState('');
 
   const openAdjustModal = (product: Product, direction: 'Add' | 'Sub') => {
     setAdjustProduct(product);
     setAdjustDirection(direction);
     setAdjustQty(0);
     setAdjustReason(direction === 'Add' ? 'Received stock' : 'Damaged / Expired stock');
+    setSelectedVariationId(product.variations && product.variations.length > 0 ? product.variations[0].id : '');
     setIsAdjustModalOpen(true);
   };
 
@@ -44,12 +46,18 @@ export const Inventory: React.FC = () => {
       return;
     }
 
-    if (adjustDirection === 'Sub' && adjustQty > adjustProduct.currentStock) {
-      showToast('Adjustment exceeds current stock levels!', 'warning');
-      return;
+    if (adjustDirection === 'Sub') {
+      const currentStockLimit = adjustProduct.variations && selectedVariationId
+        ? adjustProduct.variations.find(v => v.id === selectedVariationId)?.currentStock || 0
+        : adjustProduct.currentStock;
+
+      if (adjustQty > currentStockLimit) {
+        showToast('Adjustment exceeds current stock levels!', 'warning');
+        return;
+      }
     }
 
-    DB.adjustStock(adjustProduct.id, adjustQty, adjustDirection, adjustReason);
+    DB.adjustStock(adjustProduct.id, adjustQty, adjustDirection, adjustReason, selectedVariationId);
     refreshData();
     setIsAdjustModalOpen(false);
     setAdjustProduct(null);
@@ -178,6 +186,15 @@ export const Inventory: React.FC = () => {
                           <td>
                             <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{p.name}</div>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Category: {p.category} &bull; Unit: {p.unit}</span>
+                            {p.variations && p.variations.length > 0 && (
+                              <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                                {p.variations.map(v => (
+                                  <span key={v.id} style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '4px', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                    {v.mark}: Stock: {Number(v.currentStock.toFixed(3))}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                           <td style={{ fontFamily: 'Courier New', fontWeight: 600 }}>{p.barcode}</td>
                           <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{p.minStockAlert} {p.unit}</td>
@@ -300,6 +317,25 @@ export const Inventory: React.FC = () => {
                   <span>Current Inventory Balance:</span>
                   <strong>{Number(adjustProduct.currentStock.toFixed(3))} {adjustProduct.unit}</strong>
                 </div>
+
+                {adjustProduct.variations && adjustProduct.variations.length > 0 && (
+                  <div className="form-group">
+                    <label>Select Variation / Mark *</label>
+                    <select
+                      className="form-control"
+                      value={selectedVariationId}
+                      onChange={(e) => setSelectedVariationId(e.target.value)}
+                      required
+                    >
+                      <option value="">-- Choose Variation --</option>
+                      {adjustProduct.variations.map(v => (
+                        <option key={v.id} value={v.id}>
+                          {v.mark} (Current Stock: {Number(v.currentStock.toFixed(3))} {adjustProduct.unit})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="form-group">
                   <label>Adjustment Action</label>

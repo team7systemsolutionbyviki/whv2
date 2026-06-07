@@ -188,6 +188,19 @@ export const Wholesale: React.FC = () => {
     const dealer = dealers.find(d => d.id === selectedDealerId);
     if (!dealer) return;
 
+    // Double check stock before saving to make sure stock doesn't go below zero
+    for (const item of wholesaleCart) {
+      const prod = products.find(p => p.id === item.product.id);
+      if (!prod) continue;
+      const stockLimit = item.variation
+        ? prod.variations?.find(v => v.id === item.variation?.id)?.currentStock || 0
+        : prod.currentStock;
+      if (item.qty > stockLimit) {
+        showToast(`Error: Insufficient stock for ${item.product.name} (Available: ${stockLimit})`, 'danger');
+        return;
+      }
+    }
+
     const saleData: Sale = {
       id: 'S-' + Date.now(),
       invoiceNo: settings.invoicePrefix + 'W-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-4),

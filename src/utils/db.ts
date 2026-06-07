@@ -102,6 +102,20 @@ export interface Dealer {
   phone: string;
   address: string;
   outstanding: number; // outstanding dues
+  email?: string;
+  creditLimit?: number;
+  gstin?: string;
+  lastReminderSent?: string; // ISO date of last WhatsApp/SMS reminder
+}
+
+export interface DealerPayment {
+  id: string;
+  dealerId: string;
+  date: string;
+  amount: number;
+  type?: 'credit' | 'debit';
+  referenceNo?: string;
+  note?: string;
 }
 
 export interface Supplier {
@@ -260,6 +274,7 @@ const KEYS = {
   STOCK_HISTORY: 'billing_stock_history',
   SETTINGS: 'billing_settings',
   SUPPLIER_PAYMENTS: 'billing_supplier_payments',
+  DEALER_PAYMENTS: 'billing_dealer_payments',
 };
 
 // Helper methods to read/write from localStorage
@@ -273,6 +288,7 @@ const getFirebasePath = (key: string): string | null => {
     case 'billing_stock_history': return 'stock_history';
     case 'billing_settings': return 'settings';
     case 'billing_supplier_payments': return 'supplier_payments';
+    case 'billing_dealer_payments': return 'dealer_payments';
     case 'login_history': return 'login_history';
     case 'app_users': return 'app_users';
     default: return null;
@@ -347,6 +363,7 @@ export const DB = {
     getJSON(KEYS.PURCHASES, INITIAL_PURCHASES);
     getJSON(KEYS.STOCK_HISTORY, INITIAL_STOCK_HISTORY);
     getJSON(KEYS.SUPPLIER_PAYMENTS, []);
+    getJSON(KEYS.DEALER_PAYMENTS, []);
   },
 
   reset: () => {
@@ -361,7 +378,24 @@ export const DB = {
   },
 
   // Products
-  getProducts: (): Product[] => getJSON<Product[]>(KEYS.PRODUCTS, []),
+  getProducts: (): Product[] => {
+    const products = getJSON<Product[]>(KEYS.PRODUCTS, []);
+    let modified = false;
+    products.forEach((p) => {
+      if (p.variations && p.variations.length > 0) {
+        const sum = p.variations.reduce((s, v) => s + v.currentStock, 0);
+        if (p.currentStock !== sum) {
+          const diff = p.currentStock - sum;
+          p.variations[0].currentStock += diff;
+          modified = true;
+        }
+      }
+    });
+    if (modified) {
+      setJSON(KEYS.PRODUCTS, products, false);
+    }
+    return products;
+  },
   saveProduct: (product: Product): void => {
     const products = DB.getProducts();
     const idx = products.findIndex((p) => p.id === product.id);
@@ -396,6 +430,20 @@ export const DB = {
       dealers[idx].outstanding = Math.max(0, dealers[idx].outstanding + diff);
       setJSON(KEYS.DEALERS, dealers);
     }
+  },
+  updateDealerReminderDate: (dealerId: string, date: string): void => {
+    const dealers = DB.getDealers();
+    const idx = dealers.findIndex((d) => d.id === dealerId);
+    if (idx >= 0) {
+      dealers[idx].lastReminderSent = date;
+      setJSON(KEYS.DEALERS, dealers);
+    }
+  },
+  getDealerPayments: (): DealerPayment[] => getJSON<DealerPayment[]>(KEYS.DEALER_PAYMENTS, []),
+  saveDealerPayment: (payment: DealerPayment): void => {
+    const payments = DB.getDealerPayments();
+    payments.push(payment);
+    setJSON(KEYS.DEALER_PAYMENTS, payments);
   },
 
   // Suppliers
@@ -529,7 +577,7 @@ export const DB = {
 
   // Stock History
   getStockHistory: (): StockTransaction[] => getJSON<StockTransaction[]>(KEYS.STOCK_HISTORY, []),
-  adjustStock: (productId: string, qty: number, direction: 'Add' | 'Sub', reason: string): void => {
+  adjustStock: (productId: string, qty: number, direction: 'Add' | 'Sub', reason: string, variationId?: string): void => {
     const products = DB.getProducts();
     const history = DB.getStockHistory();
     const pIdx = products.findIndex((p) => p.id === productId);
@@ -537,13 +585,23 @@ export const DB = {
     if (pIdx >= 0) {
       const adjustmentQty = direction === 'Add' ? qty : -qty;
       products[pIdx].currentStock += adjustmentQty;
+
+      let variationMark = '';
+      if (variationId && products[pIdx].variations) {
+        const vIdx = products[pIdx].variations!.findIndex(v => v.id === variationId);
+        if (vIdx >= 0) {
+          products[pIdx].variations![vIdx].currentStock += adjustmentQty;
+          variationMark = ` (${products[pIdx].variations![vIdx].mark})`;
+        }
+      }
+
       setJSON(KEYS.PRODUCTS, products);
 
       history.push({
         id: 'T' + Date.now() + Math.random().toString(36).substr(2, 4),
         date: new Date().toISOString(),
         productId: productId,
-        productName: products[pIdx].name,
+        productName: products[pIdx].name + variationMark,
         type: direction === 'Add' ? 'Adjustment (Add)' : 'Adjustment (Sub)',
         qty: adjustmentQty,
         referenceNo: 'ADJ-' + Date.now().toString().slice(-4),

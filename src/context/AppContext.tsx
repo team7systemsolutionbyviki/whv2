@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransaction, SaleItem, ProductVariation, SupplierPayment } from '../utils/db';
+import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransaction, SaleItem, ProductVariation, SupplierPayment, DealerPayment } from '../utils/db';
 import { rtdb, isMockMode } from '../utils/firebase';
 import { ref, onValue } from 'firebase/database';
 
-export type ActiveTab = 'dashboard' | 'products' | 'pos' | 'wholesale' | 'purchases' | 'inventory' | 'reports' | 'settings' | 'profit_adder';
+export type ActiveTab = 'dashboard' | 'products' | 'pos' | 'wholesale' | 'purchases' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers';
 
 export interface CartItem {
   product: Product;
@@ -42,6 +42,7 @@ interface AppContextType {
   dealers: Dealer[];
   suppliers: Supplier[];
   supplierPayments: SupplierPayment[];
+  dealerPayments: DealerPayment[];
   sales: Sale[];
   purchases: Purchase[];
   stockHistory: StockTransaction[];
@@ -104,6 +105,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [dealers, setDealers] = useState<Dealer[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>([]);
+  const [dealerPayments, setDealerPayments] = useState<DealerPayment[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [stockHistory, setStockHistory] = useState<StockTransaction[]>([]);
@@ -213,6 +215,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDealers(DB.getDealers());
     setSuppliers(DB.getSuppliers());
     setSupplierPayments(DB.getSupplierPayments());
+    setDealerPayments(DB.getDealerPayments());
     setSales(DB.getSales());
     setPurchases(DB.getPurchases());
     setStockHistory(DB.getStockHistory());
@@ -244,6 +247,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // RETAIL CART LOGIC
   const addToRetailCart = (product: Product, qty = 1, variation?: ProductVariation) => {
+    let addedSuccessfully = true;
     setRetailCart((prev) => {
       const idx = prev.findIndex((item) => item.product.id === product.id && item.variation?.id === variation?.id);
       const stockLimit = variation ? variation.currentStock : product.currentStock;
@@ -251,19 +255,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (idx >= 0) {
         const newQty = prev[idx].qty + qty;
         if (newQty > stockLimit) {
-          showToast(`Warning: Added quantity exceeds current stock (${stockLimit})`, 'warning');
+          showToast(`Error: Cannot exceed available stock (${stockLimit})`, 'danger');
+          const updated = [...prev];
+          updated[idx].qty = stockLimit;
+          return updated;
         }
         const updated = [...prev];
         updated[idx].qty = newQty;
         return updated;
       }
       if (stockLimit <= 0) {
-        showToast(`Warning: Product "${product.name}" is out of stock!`, 'warning');
+        showToast(`Error: Product "${product.name}" is out of stock!`, 'danger');
+        addedSuccessfully = false;
+        return prev;
       }
-      return [...prev, { product, qty, variation, customUnit: variation?.unit }];
+      const addedQty = Math.min(qty, stockLimit);
+      return [...prev, { product, qty: addedQty, variation, customUnit: variation?.unit }];
     });
-    const displayName = variation ? `${product.name} (${variation.mark})` : product.name;
-    showToast(`${displayName} added to cart`, 'success');
+    
+    if (addedSuccessfully) {
+      const displayName = variation ? `${product.name} (${variation.mark})` : product.name;
+      showToast(`${displayName} added to cart`, 'success');
+    }
   };
 
   const removeFromRetailCart = (productId: string, variationId?: string) => {
@@ -277,11 +290,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (idx >= 0) {
         const prod = prev[idx].product;
         const stockLimit = prev[idx].variation ? prev[idx].variation!.currentStock : prod.currentStock;
+        let finalQty = qty;
         if (qty > stockLimit) {
-          showToast(`Warning: Exceeds stock count of ${stockLimit}`, 'warning');
+          showToast(`Error: Limited to available stock count of ${stockLimit}`, 'danger');
+          finalQty = stockLimit;
         }
         const updated = [...prev];
-        updated[idx].qty = qty;
+        updated[idx].qty = finalQty;
         updated[idx].customWeight = undefined; // clear weight override on manual qty edit
         return updated;
       }
@@ -320,11 +335,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         
         if (unitWeight > 0) {
-          const newQty = Number((weight / unitWeight).toFixed(3));
+          let newQty = Number((weight / unitWeight).toFixed(3));
           const prod = item.product;
           const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
           if (newQty > stockLimit) {
-            showToast(`Warning: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}`, 'warning');
+            showToast(`Error: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}. Clamped to stock count.`, 'danger');
+            newQty = stockLimit;
+            item.customWeight = Number((stockLimit * unitWeight).toFixed(3));
           }
           item.qty = newQty;
         }
@@ -367,13 +384,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         if (unitWeight > 0) {
           const calculatedWeight = bags * unitWeight;
-          item.customWeight = calculatedWeight;
-          
-          const newQty = Number((calculatedWeight / unitWeight).toFixed(3));
+          let newQty = Number((calculatedWeight / unitWeight).toFixed(3));
           const prod = item.product;
           const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
           if (newQty > stockLimit) {
-            showToast(`Warning: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}`, 'warning');
+            showToast(`Error: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}. Clamped to stock count.`, 'danger');
+            newQty = stockLimit;
+            item.bags = Math.floor(stockLimit / unitWeight);
+            item.customWeight = Number((item.bags * unitWeight).toFixed(3));
+          } else {
+            item.customWeight = calculatedWeight;
           }
           item.qty = newQty;
         }
@@ -417,17 +437,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // WHOLESALE CART LOGIC
   const addToWholesaleCart = (product: Product, qty = 1, variation?: ProductVariation) => {
+    let addedSuccessfully = true;
     setWholesaleCart((prev) => {
       const idx = prev.findIndex((item) => item.product.id === product.id && item.variation?.id === variation?.id);
+      const stockLimit = variation ? variation.currentStock : product.currentStock;
+
       if (idx >= 0) {
+        const newQty = prev[idx].qty + qty;
+        if (newQty > stockLimit) {
+          showToast(`Error: Cannot exceed available stock (${stockLimit})`, 'danger');
+          const updated = [...prev];
+          updated[idx].qty = stockLimit;
+          return updated;
+        }
         const updated = [...prev];
-        updated[idx].qty += qty;
+        updated[idx].qty = newQty;
         return updated;
       }
-      return [...prev, { product, qty, variation, customUnit: variation?.unit }];
+      if (stockLimit <= 0) {
+        showToast(`Error: Product "${product.name}" is out of stock!`, 'danger');
+        addedSuccessfully = false;
+        return prev;
+      }
+      const addedQty = Math.min(qty, stockLimit);
+      return [...prev, { product, qty: addedQty, variation, customUnit: variation?.unit }];
     });
-    const displayName = variation ? `${product.name} (${variation.mark})` : product.name;
-    showToast(`${displayName} added to wholesale cart`, 'success');
+    
+    if (addedSuccessfully) {
+      const displayName = variation ? `${product.name} (${variation.mark})` : product.name;
+      showToast(`${displayName} added to wholesale cart`, 'success');
+    }
   };
 
   const removeFromWholesaleCart = (productId: string, variationId?: string) => {
@@ -439,8 +478,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setWholesaleCart((prev) => {
       const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
       if (idx >= 0) {
+        const prod = prev[idx].product;
+        const stockLimit = prev[idx].variation ? prev[idx].variation!.currentStock : prod.currentStock;
+        let finalQty = qty;
+        if (qty > stockLimit) {
+          showToast(`Error: Limited to available stock count of ${stockLimit}`, 'danger');
+          finalQty = stockLimit;
+        }
         const updated = [...prev];
-        updated[idx].qty = qty;
+        updated[idx].qty = finalQty;
         updated[idx].customWeight = undefined; // clear override on manual qty edit
         return updated;
       }
@@ -479,7 +525,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         
         if (unitWeight > 0) {
-          const newQty = Number((weight / unitWeight).toFixed(3));
+          let newQty = Number((weight / unitWeight).toFixed(3));
+          const prod = item.product;
+          const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
+          if (newQty > stockLimit) {
+            showToast(`Error: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}. Clamped to stock count.`, 'danger');
+            newQty = stockLimit;
+            item.customWeight = Number((stockLimit * unitWeight).toFixed(3));
+          }
           item.qty = newQty;
         }
         
@@ -521,9 +574,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         if (unitWeight > 0) {
           const calculatedWeight = bags * unitWeight;
-          item.customWeight = calculatedWeight;
-          
-          const newQty = Number((calculatedWeight / unitWeight).toFixed(3));
+          let newQty = Number((calculatedWeight / unitWeight).toFixed(3));
+          const prod = item.product;
+          const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
+          if (newQty > stockLimit) {
+            showToast(`Error: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}. Clamped to stock count.`, 'danger');
+            newQty = stockLimit;
+            item.bags = Math.floor(stockLimit / unitWeight);
+            item.customWeight = Number((item.bags * unitWeight).toFixed(3));
+          } else {
+            item.customWeight = calculatedWeight;
+          }
           item.qty = newQty;
         }
         
@@ -625,6 +686,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dealers,
         suppliers,
         supplierPayments,
+        dealerPayments,
         sales,
         purchases,
         stockHistory,
