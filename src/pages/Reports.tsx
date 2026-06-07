@@ -30,6 +30,29 @@ export const Reports: React.FC = () => {
   const [pattiSortOrder, setPattiSortOrder] = useState<'asc' | 'desc'>('asc');
   const [pattiSearchQuery, setPattiSearchQuery] = useState<string>('');
 
+  // General Report Sorting States
+  const [salesSortField, setSalesSortField] = useState<string>('date');
+  const [salesSortAsc, setSalesSortAsc] = useState<boolean>(false);
+
+  const [purchasesSortField, setPurchasesSortField] = useState<string>('date');
+  const [purchasesSortAsc, setPurchasesSortAsc] = useState<boolean>(false);
+
+  const [salesProfitSortField, setSalesProfitSortField] = useState<string>('name');
+  const [salesProfitSortAsc, setSalesProfitSortAsc] = useState<boolean>(true);
+
+  const [stockSortField, setStockSortField] = useState<string>('name');
+  const [stockSortAsc, setStockSortAsc] = useState<boolean>(true);
+
+  const [markWiseSortField, setMarkWiseSortField] = useState<string>('name');
+  const [markWiseSortAsc, setMarkWiseSortAsc] = useState<boolean>(true);
+
+  const [staffWiseSortField, setStaffWiseSortField] = useState<string>('email');
+  const [staffWiseSortAsc, setStaffWiseSortAsc] = useState<boolean>(true);
+
+  const [consignmentSortField, setConsignmentSortField] = useState<string>('date');
+  const [consignmentSortAsc, setConsignmentSortAsc] = useState<boolean>(false);
+
+
   const getProductPurchaseDetails = (productId: string, variationId?: string) => {
     const matchingPurchases = purchases.filter(p => 
       p.items.some(item => 
