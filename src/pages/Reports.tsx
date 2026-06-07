@@ -555,7 +555,498 @@ export const Reports: React.FC = () => {
     });
   }, [filteredSales, staffFilter]);
 
+  // Memoized sorted arrays for all report datasets
+  const sortedFilteredSales = React.useMemo(() => {
+    let list = [...filteredSales];
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (salesSortField) {
+        case 'invoiceNo':
+          valA = a.invoiceNo;
+          valB = b.invoiceNo;
+          break;
+        case 'date':
+          valA = new Date(a.date).getTime();
+          valB = new Date(b.date).getTime();
+          break;
+        case 'customerName':
+          valA = a.customerName.toLowerCase();
+          valB = b.customerName.toLowerCase();
+          break;
+        case 'paymentMethod':
+          valA = a.paymentMethod.toLowerCase();
+          valB = b.paymentMethod.toLowerCase();
+          break;
+        case 'netAmount':
+          valA = a.total;
+          valB = b.total;
+          break;
+        case 'lotNo': {
+          const lotsA = a.items.map(item => getProductPurchaseDetails(item.productId, item.variationId).lotNo).filter(x => x !== '-');
+          const lotsB = b.items.map(item => getProductPurchaseDetails(item.productId, item.variationId).lotNo).filter(x => x !== '-');
+          valA = lotsA.join(', ').toLowerCase();
+          valB = lotsB.join(', ').toLowerCase();
+          break;
+        }
+        case 'vehicleNo': {
+          const vehsA = a.items.map(item => getProductPurchaseDetails(item.productId, item.variationId).vehicleNo).filter(x => x !== '-');
+          const vehsB = b.items.map(item => getProductPurchaseDetails(item.productId, item.variationId).vehicleNo).filter(x => x !== '-');
+          valA = vehsA.join(', ').toLowerCase();
+          valB = vehsB.join(', ').toLowerCase();
+          break;
+        }
+        default:
+          valA = new Date(a.date).getTime();
+          valB = new Date(b.date).getTime();
+      }
+
+      if (valA < valB) return salesSortAsc ? -1 : 1;
+      if (valA > valB) return salesSortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filteredSales, salesSortField, salesSortAsc, purchases]);
+
+  const sortedFilteredPurchases = React.useMemo(() => {
+    let list = [...filteredPurchases];
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (purchasesSortField) {
+        case 'invoiceNo':
+          valA = a.invoiceNo;
+          valB = b.invoiceNo;
+          break;
+        case 'date':
+          valA = new Date(a.date).getTime();
+          valB = new Date(b.date).getTime();
+          break;
+        case 'supplier': {
+          const suppA = suppliers.find(s => s.id === a.supplierId)?.name || a.supplierId;
+          const suppB = suppliers.find(s => s.id === b.supplierId)?.name || b.supplierId;
+          valA = suppA.toLowerCase();
+          valB = suppB.toLowerCase();
+          break;
+        }
+        case 'paymentStatus':
+          valA = a.paymentStatus.toLowerCase();
+          valB = b.paymentStatus.toLowerCase();
+          break;
+        case 'totalCost':
+          valA = a.items.reduce((sum, item) => sum + item.total, 0);
+          valB = b.items.reduce((sum, item) => sum + item.total, 0);
+          break;
+        case 'lotNo':
+          valA = (a.lotNo || '').toLowerCase();
+          valB = (b.lotNo || '').toLowerCase();
+          break;
+        case 'vehicleNo':
+          valA = (a.vehicleNo || '').toLowerCase();
+          valB = (b.vehicleNo || '').toLowerCase();
+          break;
+        default:
+          valA = new Date(a.date).getTime();
+          valB = new Date(b.date).getTime();
+      }
+
+      if (valA < valB) return purchasesSortAsc ? -1 : 1;
+      if (valA > valB) return purchasesSortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [filteredPurchases, purchasesSortField, purchasesSortAsc, suppliers]);
+
+  const sortedSalesProfitItems = React.useMemo(() => {
+    const aggMap = filteredSales.reduce((acc, sale) => {
+      sale.items.forEach(item => {
+        const key = item.productId + (item.variationId ? '-' + item.variationId : '');
+        if (acc[key]) {
+          acc[key].qty += item.qty;
+          acc[key].bags += item.bags || 0;
+        } else {
+          acc[key] = {
+            id: key,
+            name: item.name,
+            cost: item.purchasePrice,
+            sale: item.salesPrice,
+            qty: item.qty,
+            bags: item.bags || 0,
+            variationMark: item.variationMark
+          };
+        }
+      });
+      return acc;
+    }, {} as { [key: string]: { id: string; name: string; cost: number; sale: number; qty: number; bags: number; variationMark?: string } });
+
+    let list = Object.values(aggMap);
+
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (salesProfitSortField) {
+        case 'name':
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
+          break;
+        case 'cost':
+          valA = a.cost;
+          valB = b.cost;
+          break;
+        case 'sale':
+          valA = a.sale;
+          valB = b.sale;
+          break;
+        case 'profitPerItem':
+          valA = a.sale - a.cost;
+          valB = b.sale - b.cost;
+          break;
+        case 'qty':
+          valA = a.qty;
+          valB = b.qty;
+          break;
+        case 'totalProfit':
+          valA = (a.sale - a.cost) * a.qty;
+          valB = (b.sale - b.cost) * b.qty;
+          break;
+        default:
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
+      }
+
+      if (valA < valB) return salesProfitSortAsc ? -1 : 1;
+      if (valA > valB) return salesProfitSortAsc ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }, [filteredSales, salesProfitSortField, salesProfitSortAsc]);
+
+  const sortedStockValuation = React.useMemo(() => {
+    let list = [...stockItemsValuation];
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (stockSortField) {
+        case 'name':
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
+          break;
+        case 'variationMark':
+          valA = (a.variationMark || '').toLowerCase();
+          valB = (b.variationMark || '').toLowerCase();
+          break;
+        case 'barcode':
+          valA = a.barcode;
+          valB = b.barcode;
+          break;
+        case 'category':
+          valA = a.category.toLowerCase();
+          valB = b.category.toLowerCase();
+          break;
+        case 'currentStock':
+          valA = a.currentStock;
+          valB = b.currentStock;
+          break;
+        case 'purchasePrice':
+          valA = a.purchasePrice;
+          valB = b.purchasePrice;
+          break;
+        case 'costVal':
+          valA = a.currentStock * a.purchasePrice;
+          valB = b.currentStock * b.purchasePrice;
+          break;
+        case 'salesPrice':
+          valA = a.salesPrice;
+          valB = b.salesPrice;
+          break;
+        case 'retailVal':
+          valA = a.currentStock * a.salesPrice;
+          valB = b.currentStock * b.salesPrice;
+          break;
+        case 'potentialProf':
+          valA = (a.currentStock * a.salesPrice) - (a.currentStock * a.purchasePrice);
+          valB = (b.currentStock * b.salesPrice) - (b.currentStock * b.purchasePrice);
+          break;
+        case 'lotNo': {
+          const [prodId, varId] = a.id.split('-');
+          const traceA = getProductPurchaseDetails(prodId, varId);
+          const [prodIdB, varIdB] = b.id.split('-');
+          const traceB = getProductPurchaseDetails(prodIdB, varIdB);
+          valA = traceA.lotNo.toLowerCase();
+          valB = traceB.lotNo.toLowerCase();
+          break;
+        }
+        case 'vehicleNo': {
+          const [prodId, varId] = a.id.split('-');
+          const traceA = getProductPurchaseDetails(prodId, varId);
+          const [prodIdB, varIdB] = b.id.split('-');
+          const traceB = getProductPurchaseDetails(prodIdB, varIdB);
+          valA = traceA.vehicleNo.toLowerCase();
+          valB = traceB.vehicleNo.toLowerCase();
+          break;
+        }
+        default:
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
+      }
+
+      if (valA < valB) return stockSortAsc ? -1 : 1;
+      if (valA > valB) return stockSortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [stockItemsValuation, stockSortField, stockSortAsc, purchases]);
+
+  const sortedMarkWiseReportItems = React.useMemo(() => {
+    let list = [...markWiseReportItems];
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (markWiseSortField) {
+        case 'name':
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
+          break;
+        case 'variationMark':
+          valA = (a.variationMark || '').toLowerCase();
+          valB = (b.variationMark || '').toLowerCase();
+          break;
+        case 'qtySold':
+          valA = a.qtySold;
+          valB = b.qtySold;
+          break;
+        case 'salesRevenue':
+          valA = a.salesRevenue;
+          valB = b.salesRevenue;
+          break;
+        case 'salesProfit':
+          valA = a.salesProfit;
+          valB = b.salesProfit;
+          break;
+        case 'currentStock':
+          valA = a.currentStock;
+          valB = b.currentStock;
+          break;
+        case 'costVal':
+          valA = a.costVal;
+          valB = b.costVal;
+          break;
+        case 'retailVal':
+          valA = a.retailVal;
+          valB = b.retailVal;
+          break;
+        case 'potentialProf':
+          valA = a.potentialProf;
+          valB = b.potentialProf;
+          break;
+        case 'lotNo': {
+          const [prodId, varId] = a.id.split('-');
+          const traceA = getProductPurchaseDetails(prodId, varId);
+          const [prodIdB, varIdB] = b.id.split('-');
+          const traceB = getProductPurchaseDetails(prodIdB, varIdB);
+          valA = traceA.lotNo.toLowerCase();
+          valB = traceB.lotNo.toLowerCase();
+          break;
+        }
+        case 'vehicleNo': {
+          const [prodId, varId] = a.id.split('-');
+          const traceA = getProductPurchaseDetails(prodId, varId);
+          const [prodIdB, varIdB] = b.id.split('-');
+          const traceB = getProductPurchaseDetails(prodIdB, varIdB);
+          valA = traceA.vehicleNo.toLowerCase();
+          valB = traceB.vehicleNo.toLowerCase();
+          break;
+        }
+        default:
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
+      }
+
+      if (valA < valB) return markWiseSortAsc ? -1 : 1;
+      if (valA > valB) return markWiseSortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [markWiseReportItems, markWiseSortField, markWiseSortAsc, purchases]);
+
+  const sortedStaffWiseStats = React.useMemo(() => {
+    let list = [...staffWiseStats];
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (staffWiseSortField) {
+        case 'email':
+          valA = a.email.toLowerCase();
+          valB = b.email.toLowerCase();
+          break;
+        case 'role':
+          valA = a.role.toLowerCase();
+          valB = b.role.toLowerCase();
+          break;
+        case 'invoiceCount':
+          valA = a.invoiceCount;
+          valB = b.invoiceCount;
+          break;
+        case 'totalRevenue':
+          valA = a.totalRevenue;
+          valB = b.totalRevenue;
+          break;
+        case 'totalCost':
+          valA = a.totalCost;
+          valB = b.totalCost;
+          break;
+        case 'totalProfit':
+          valA = a.totalProfit;
+          valB = b.totalProfit;
+          break;
+        case 'cashCollected':
+          valA = a.cashCollected;
+          valB = b.cashCollected;
+          break;
+        case 'upiCollected':
+          valA = a.upiCollected;
+          valB = b.upiCollected;
+          break;
+        case 'cardCollected':
+          valA = a.cardCollected;
+          valB = b.cardCollected;
+          break;
+        default:
+          valA = a.email.toLowerCase();
+          valB = b.email.toLowerCase();
+      }
+
+      if (valA < valB) return staffWiseSortAsc ? -1 : 1;
+      if (valA > valB) return staffWiseSortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [staffWiseStats, staffWiseSortField, staffWiseSortAsc]);
+
+  const sortedConsignments = React.useMemo(() => {
+    let list = [...consignments];
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (consignmentSortField) {
+        case 'vehicleNo':
+          valA = a.vehicleNo.toLowerCase();
+          valB = b.vehicleNo.toLowerCase();
+          break;
+        case 'vehicleMark':
+          valA = a.vehicleMark.toLowerCase();
+          valB = b.vehicleMark.toLowerCase();
+          break;
+        case 'lotNo':
+          valA = a.lotNo.toLowerCase();
+          valB = b.lotNo.toLowerCase();
+          break;
+        case 'purchaseTotal':
+          valA = a.purchaseTotal;
+          valB = b.purchaseTotal;
+          break;
+        case 'date': {
+          const matchingPurchasesA = purchases.filter(p => 
+            (p.vehicleNo || '') === a.vehicleNo &&
+            (p.vehicleMark || '') === a.vehicleMark &&
+            (p.lotNo || '') === a.lotNo
+          );
+          const matchingPurchasesB = purchases.filter(p => 
+            (p.vehicleNo || '') === b.vehicleNo &&
+            (p.vehicleMark || '') === b.vehicleMark &&
+            (p.lotNo || '') === b.lotNo
+          );
+          const timeA = matchingPurchasesA.length > 0 ? new Date(matchingPurchasesA[0].date).getTime() : 0;
+          const timeB = matchingPurchasesB.length > 0 ? new Date(matchingPurchasesB[0].date).getTime() : 0;
+          valA = timeA;
+          valB = timeB;
+          break;
+        }
+        default:
+          valA = a.vehicleNo.toLowerCase();
+          valB = b.vehicleNo.toLowerCase();
+      }
+
+      if (valA < valB) return consignmentSortAsc ? -1 : 1;
+      if (valA > valB) return consignmentSortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [consignments, consignmentSortField, consignmentSortAsc, purchases]);
+
+  const handleSalesSort = (field: string) => {
+    if (salesSortField === field) {
+      setSalesSortAsc(!salesSortAsc);
+    } else {
+      setSalesSortField(field);
+      setSalesSortAsc(true);
+    }
+  };
+
+  const handlePurchasesSort = (field: string) => {
+    if (purchasesSortField === field) {
+      setPurchasesSortAsc(!purchasesSortAsc);
+    } else {
+      setPurchasesSortField(field);
+      setPurchasesSortAsc(true);
+    }
+  };
+
+  const handleSalesProfitSort = (field: string) => {
+    if (salesProfitSortField === field) {
+      setSalesProfitSortAsc(!salesProfitSortAsc);
+    } else {
+      setSalesProfitSortField(field);
+      setSalesProfitSortAsc(true);
+    }
+  };
+
+  const handleStockSort = (field: string) => {
+    if (stockSortField === field) {
+      setStockSortAsc(!stockSortAsc);
+    } else {
+      setStockSortField(field);
+      setStockSortAsc(true);
+    }
+  };
+
+  const handleMarkWiseSort = (field: string) => {
+    if (markWiseSortField === field) {
+      setMarkWiseSortAsc(!markWiseSortAsc);
+    } else {
+      setMarkWiseSortField(field);
+      setMarkWiseSortAsc(true);
+    }
+  };
+
+  const handleStaffWiseSort = (field: string) => {
+    if (staffWiseSortField === field) {
+      setStaffWiseSortAsc(!staffWiseSortAsc);
+    } else {
+      setStaffWiseSortField(field);
+      setStaffWiseSortAsc(true);
+    }
+  };
+
+  const handleConsignmentSort = (field: string) => {
+    if (consignmentSortField === field) {
+      setConsignmentSortAsc(!consignmentSortAsc);
+    } else {
+      setConsignmentSortField(field);
+      setConsignmentSortAsc(true);
+    }
+  };
+
   // CSV Exporter helper
+
   const handleExportCSV = () => {
     let headers: string[] = [];
     let rows: string[][] = [];
@@ -563,7 +1054,7 @@ export const Reports: React.FC = () => {
 
     if (activeReport === 'sales') {
       headers = ['Bill Number', 'Customer', 'Date', 'Product', 'Bags', 'Qty Sold', 'Cost Price (INR)', 'Sales Price (INR)', 'Total Profit (INR)', 'Total Bill Value (INR)', 'Associated Vehicle No', 'Associated Lot No'];
-      rows = filteredSales.flatMap(sale => 
+      rows = sortedFilteredSales.flatMap(sale => 
         sale.items.map(item => {
           const trace = getProductPurchaseDetails(item.productId, item.variationId);
           return [
@@ -585,7 +1076,7 @@ export const Reports: React.FC = () => {
       fileName = `Sales_Ledger_Report_${filterType}.csv`;
     } else if (activeReport === 'purchases') {
       headers = ['Invoice Number', 'Supplier ID', 'Supplier Name', 'Date', 'Vehicle No', 'Lot No', 'Vehicle Mark', 'Product', 'Bags', 'Qty Bought', 'Unit Price (INR)', 'Total Cost (INR)'];
-      rows = filteredPurchases.flatMap(pur =>
+      rows = sortedFilteredPurchases.flatMap(pur =>
         pur.items.map(item => [
           pur.invoiceNo,
           pur.supplierId,
@@ -604,27 +1095,7 @@ export const Reports: React.FC = () => {
       fileName = `Purchases_Report_${filterType}.csv`;
     } else if (activeReport === 'sales_profit') {
       headers = ['Product Name', 'Total Bags', 'Purchase Cost (INR)', 'Retail Price (INR)', 'Profit Per Item (INR)', 'Quantity Sold', 'Total Net Profit (INR)'];
-      // Aggregate product totals
-      const agg: { [key: string]: { name: string; cost: number; sale: number; qty: number; bags: number; variationMark?: string } } = {};
-      filteredSales.forEach(sale => {
-        sale.items.forEach(item => {
-          const key = item.productId + (item.variationId ? '-' + item.variationId : '');
-          if (agg[key]) {
-            agg[key].qty += item.qty;
-            agg[key].bags += item.bags || 0;
-          } else {
-            agg[key] = {
-              name: item.name,
-              cost: item.purchasePrice,
-              sale: item.salesPrice,
-              qty: item.qty,
-              bags: item.bags || 0,
-              variationMark: item.variationMark
-            };
-          }
-        });
-      });
-      rows = Object.values(agg).map(item => [
+      rows = sortedSalesProfitItems.map(item => [
         item.variationMark && !item.name.includes(item.variationMark) ? `${item.name} (${item.variationMark})` : item.name,
         item.bags.toString(),
         item.cost.toFixed(2),
@@ -637,7 +1108,7 @@ export const Reports: React.FC = () => {
     } else if (activeReport === 'stock') {
       // Stock Wise Report
       headers = ['Product Name', 'Mark', 'Barcode', 'Category', 'Current Stock', 'Unit Cost Price (INR)', 'Total Cost Value (INR)', 'Unit Sales Price (INR)', 'Total Sales Value (INR)', 'Potential Profit (INR)', 'Status', 'Associated Vehicle No', 'Associated Lot No'];
-      rows = stockItemsValuation.map(item => {
+      rows = sortedStockValuation.map(item => {
         const costVal = item.currentStock * item.purchasePrice;
         const retailVal = item.currentStock * item.salesPrice;
         const potentialProf = retailVal - costVal;
@@ -668,7 +1139,7 @@ export const Reports: React.FC = () => {
         'Bags Sold', 'Qty Sold', 'Sales Revenue (INR)', 'Sales Cost (INR)', 'Sales Profit/Loss (INR)', 
         'Current Stock', 'Stock Cost Value (INR)', 'Stock Retail Value (INR)', 'Stock Potential Profit (INR)', 'Status', 'Associated Vehicle No', 'Associated Lot No'
       ];
-      rows = markWiseReportItems.map(item => {
+      rows = sortedMarkWiseReportItems.map(item => {
         const status = item.currentStock === 0 ? 'OUT OF STOCK' : item.currentStock <= item.minStockAlert ? 'LOW STOCK' : 'ADEQUATE';
         const [prodId, varId] = item.id.split('-');
         const trace = getProductPurchaseDetails(prodId, varId);
@@ -724,7 +1195,7 @@ export const Reports: React.FC = () => {
     } else {
       // Staff Wise Report
       headers = ['Staff Email', 'Role', 'Invoices Count', 'Revenue (INR)', 'Cost Value (INR)', 'Net Profit (INR)', 'Cash Collected (INR)', 'UPI Collected (INR)', 'Card Collected (INR)'];
-      rows = staffWiseStats.map(stat => [
+      rows = sortedStaffWiseStats.map(stat => [
         stat.email,
         stat.role,
         stat.invoiceCount.toString(),
@@ -737,6 +1208,7 @@ export const Reports: React.FC = () => {
       ]);
       fileName = `Staff_Wise_Sales_Report_${filterType}.csv`;
     }
+
 
     // Generate CSV contents
     const csvContent = "data:text/csv;charset=utf-8," 
@@ -1035,6 +1507,8 @@ export const Reports: React.FC = () => {
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Bill No</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Customer</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Product</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Lot No</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Vehicle No</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Cost Price</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Sales Price</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Qty</th>
@@ -1046,6 +1520,8 @@ export const Reports: React.FC = () => {
                 <>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Invoice No</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Supplier</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Lot No</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Vehicle / Mark</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Product</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Quantity</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Cost Price</th>
@@ -1066,6 +1542,8 @@ export const Reports: React.FC = () => {
                 <>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Product</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Mark</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Lot No</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Vehicle No</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Barcode</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Stock Qty</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Cost Price</th>
@@ -1079,6 +1557,8 @@ export const Reports: React.FC = () => {
                 <>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Product</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Mark</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Lot No</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Vehicle No</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Unit</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Qty Sold</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Sales Revenue</th>
@@ -1105,9 +1585,10 @@ export const Reports: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {activeReport === 'sales' && filteredSales.map((sale) => 
+            {activeReport === 'sales' && sortedFilteredSales.map((sale) => 
               sale.items.map((item, idx) => {
                 const profitPerItem = item.salesPrice - item.purchasePrice;
+                const trace = getProductPurchaseDetails(item.productId, item.variationId);
                 return (
                   <tr key={`${sale.id}-${idx}`}>
                     {idx === 0 ? (
@@ -1124,19 +1605,9 @@ export const Reports: React.FC = () => {
                     <td style={{ border: '1px solid #ddd', padding: '6px' }}>
                       {item.variationMark && !item.name.includes(item.variationMark) ? `${item.name} (${item.variationMark})` : item.name}
                       {item.bags && item.bags > 0 ? ` [${item.bags} Bags]` : ''}
-                      {(() => {
-                        const trace = getProductPurchaseDetails(item.productId, item.variationId);
-                        if (trace.lotNo !== '-' || trace.vehicleNo !== '-') {
-                          return (
-                            <div style={{ fontSize: '7.5px', color: '#666', marginTop: '2px' }}>
-                              {trace.lotNo !== '-' && <span>Lot: {trace.lotNo}</span>}
-                              {trace.vehicleNo !== '-' && <span style={{ marginLeft: '4px' }}>Veh: {trace.vehicleNo}</span>}
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
                     </td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px' }}>{trace.lotNo}</td>
+                    <td style={{ border: '1px solid #ddd', padding: '6px' }}>{trace.vehicleNo}</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{item.salesPrice.toFixed(2)}</td>
                     <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{item.qty}</td>
@@ -1150,21 +1621,28 @@ export const Reports: React.FC = () => {
                 );
               })
             )}
-            {activeReport === 'purchases' && filteredPurchases.map((pur) => 
+            {activeReport === 'purchases' && sortedFilteredPurchases.map((pur) => 
               pur.items.map((item, idx) => (
                 <tr key={`${pur.id}-${idx}`}>
                   {idx === 0 ? (
                     <td rowSpan={pur.items.length} style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>
                       {pur.invoiceNo}
                       <div style={{ fontSize: '8px', color: '#555' }}>{formatDateTime(pur.date)}</div>
-                      {pur.vehicleNo && <div style={{ fontSize: '7.5px', color: 'var(--primary)', marginTop: '2px' }}>🚚 {pur.vehicleNo}</div>}
-                      {pur.lotNo && <div style={{ fontSize: '7.5px', color: 'var(--success)' }}>📦 Lot: {pur.lotNo}</div>}
-                      {pur.vehicleMark && <div style={{ fontSize: '7.5px', color: 'var(--warning)' }}>🏷️ Mark: {pur.vehicleMark}</div>}
                     </td>
                   ) : null}
                   {idx === 0 ? (
                     <td rowSpan={pur.items.length} style={{ border: '1px solid #ddd', padding: '6px' }}>
                       {suppliers.find(s => s.id === pur.supplierId)?.name || pur.supplierId}
+                    </td>
+                  ) : null}
+                  {idx === 0 ? (
+                    <td rowSpan={pur.items.length} style={{ border: '1px solid #ddd', padding: '6px' }}>
+                      {pur.lotNo || 'N/A'}
+                    </td>
+                  ) : null}
+                  {idx === 0 ? (
+                    <td rowSpan={pur.items.length} style={{ border: '1px solid #ddd', padding: '6px' }}>
+                      {pur.vehicleNo || 'N/A'} {pur.vehicleMark ? `(Mark: ${pur.vehicleMark})` : ''}
                     </td>
                   ) : null}
                   <td style={{ border: '1px solid #ddd', padding: '6px' }}>
@@ -1177,28 +1655,7 @@ export const Reports: React.FC = () => {
                 </tr>
               ))
             )}
-            {activeReport === 'sales_profit' && Object.values(
-              filteredSales.reduce((acc, sale) => {
-                sale.items.forEach(item => {
-                  const key = item.productId + (item.variationId ? '-' + item.variationId : '');
-                  if (acc[key]) {
-                    acc[key].qty += item.qty;
-                    acc[key].bags += item.bags || 0;
-                  } else {
-                    acc[key] = {
-                      id: key,
-                      name: item.name,
-                      cost: item.purchasePrice,
-                      sale: item.salesPrice,
-                      qty: item.qty,
-                      bags: item.bags || 0,
-                      variationMark: item.variationMark
-                    };
-                  }
-                });
-                return acc;
-              }, {} as { [key: string]: { id: string; name: string; cost: number; sale: number; qty: number; bags: number; variationMark?: string } })
-            ).map((aggItem) => {
+            {activeReport === 'sales_profit' && sortedSalesProfitItems.map((aggItem) => {
               const unitProfit = aggItem.sale - aggItem.cost;
               const totalItemProfit = unitProfit * aggItem.qty;
               return (
@@ -1217,29 +1674,20 @@ export const Reports: React.FC = () => {
                 </tr>
               );
             })}
-            {activeReport === 'stock' && stockItemsValuation.map(item => {
+            {activeReport === 'stock' && sortedStockValuation.map(item => {
               const costVal = item.currentStock * item.purchasePrice;
               const retailVal = item.currentStock * item.salesPrice;
               const potentialProf = retailVal - costVal;
+              const [prodId, varId] = item.id.split('-');
+              const trace = getProductPurchaseDetails(prodId, varId);
               return (
                 <tr key={item.id}>
                   <td style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>
                     {item.name}
-                    {(() => {
-                      const [prodId, varId] = item.id.split('-');
-                      const trace = getProductPurchaseDetails(prodId, varId);
-                      if (trace.lotNo !== '-' || trace.vehicleNo !== '-') {
-                        return (
-                          <div style={{ fontSize: '7.5px', color: '#666', fontWeight: 'normal', marginTop: '2px' }}>
-                            {trace.lotNo !== '-' && <span>Lot: {trace.lotNo}</span>}
-                            {trace.vehicleNo !== '-' && <span style={{ marginLeft: '4px' }}>Veh: {trace.vehicleNo}</span>}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
                   </td>
                   <td style={{ border: '1px solid #ddd', padding: '6px' }}>{item.variationMark || '-'}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px' }}>{trace.lotNo}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px' }}>{trace.vehicleNo}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', fontFamily: 'Courier New' }}>{item.barcode}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{Number(item.currentStock.toFixed(3))} {item.unit}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
@@ -1250,26 +1698,17 @@ export const Reports: React.FC = () => {
                 </tr>
               );
             })}
-            {activeReport === 'mark_wise' && markWiseReportItems.map(item => {
+            {activeReport === 'mark_wise' && sortedMarkWiseReportItems.map(item => {
+              const [prodId, varId] = item.id.split('-');
+              const trace = getProductPurchaseDetails(prodId, varId);
               return (
                 <tr key={item.id}>
                   <td style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>
                     {item.name}
-                    {(() => {
-                      const [prodId, varId] = item.id.split('-');
-                      const trace = getProductPurchaseDetails(prodId, varId);
-                      if (trace.lotNo !== '-' || trace.vehicleNo !== '-') {
-                        return (
-                          <div style={{ fontSize: '7.5px', color: '#666', fontWeight: 'normal', marginTop: '2px' }}>
-                            {trace.lotNo !== '-' && <span>Lot: {trace.lotNo}</span>}
-                            {trace.vehicleNo !== '-' && <span style={{ marginLeft: '4px' }}>Veh: {trace.vehicleNo}</span>}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
                   </td>
                   <td style={{ border: '1px solid #ddd', padding: '6px' }}>{item.variationMark || '-'}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px' }}>{trace.lotNo}</td>
+                  <td style={{ border: '1px solid #ddd', padding: '6px' }}>{trace.vehicleNo}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{item.unit}</td>
                   <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
                     {Number(item.qtySold.toFixed(3))}
@@ -1288,7 +1727,7 @@ export const Reports: React.FC = () => {
                 </tr>
               );
             })}
-            {activeReport === 'staff_wise' && staffWiseStats.map(stat => (
+            {activeReport === 'staff_wise' && sortedStaffWiseStats.map(stat => (
               <tr key={stat.email}>
                 <td style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>{stat.email}</td>
                 <td style={{ border: '1px solid #ddd', padding: '6px' }}>{stat.role}</td>
@@ -1560,20 +1999,33 @@ export const Reports: React.FC = () => {
                 <table className="custom-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th>Bill Number</th>
-                      <th>Customer Details</th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesSort('invoiceNo')}>
+                        Bill Number {salesSortField === 'invoiceNo' ? (salesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesSort('customerName')}>
+                        Customer Details {salesSortField === 'customerName' ? (salesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
                       <th>Product Items sold</th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesSort('lotNo')}>
+                        Lot No {salesSortField === 'lotNo' ? (salesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesSort('vehicleNo')}>
+                        Vehicle No {salesSortField === 'vehicleNo' ? (salesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
                       <th style={{ textAlign: 'right' }}>Cost Price</th>
                       <th style={{ textAlign: 'right' }}>Sales Price</th>
                       <th style={{ textAlign: 'center' }}>Qty</th>
                       <th style={{ textAlign: 'right' }}>Profit</th>
-                      <th style={{ textAlign: 'right' }}>Invoice Net</th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesSort('netAmount')}>
+                        Invoice Net {salesSortField === 'netAmount' ? (salesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredSales.flatMap((sale) => 
+                    {sortedFilteredSales.flatMap((sale) => 
                       sale.items.map((item, idx) => {
                         const profitPerItem = item.salesPrice - item.purchasePrice;
+                        const trace = getProductPurchaseDetails(item.productId, item.variationId);
                         return (
                           <tr key={`${sale.id}-${idx}`}>
                             {idx === 0 ? (
@@ -1604,18 +2056,24 @@ export const Reports: React.FC = () => {
                                   </span>
                                 )}
                               </div>
-                              {(() => {
-                                const trace = getProductPurchaseDetails(item.productId, item.variationId);
-                                if (trace.lotNo !== '-' || trace.vehicleNo !== '-') {
-                                  return (
-                                    <div style={{ marginTop: '0.2rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap', fontSize: '0.7rem' }}>
-                                      {trace.lotNo !== '-' && <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.05rem 0.25rem', borderRadius: '3px' }}>Lot: {trace.lotNo}</span>}
-                                      {trace.vehicleNo !== '-' && <span style={{ background: 'var(--info-light)', color: 'var(--info)', padding: '0.05rem 0.25rem', borderRadius: '3px' }}>Veh: {trace.vehicleNo}</span>}
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })()}
+                            </td>
+                            <td>
+                              {trace.lotNo !== '-' ? (
+                                <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  {trace.lotNo}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>-</span>
+                              )}
+                            </td>
+                            <td>
+                              {trace.vehicleNo !== '-' ? (
+                                <span style={{ background: 'var(--info-light)', color: 'var(--info)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  {trace.vehicleNo}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>-</span>
+                              )}
                             </td>
                             <td style={{ textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
                             <td style={{ textAlign: 'right' }}>₹{item.salesPrice.toFixed(2)}</td>
@@ -1665,31 +2123,69 @@ export const Reports: React.FC = () => {
                 <table className="custom-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th>Invoice Number</th>
-                      <th>Supplier</th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePurchasesSort('invoiceNo')}>
+                        Invoice Number {purchasesSortField === 'invoiceNo' ? (purchasesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePurchasesSort('supplier')}>
+                        Supplier {purchasesSortField === 'supplier' ? (purchasesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePurchasesSort('lotNo')}>
+                        Lot No {purchasesSortField === 'lotNo' ? (purchasesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePurchasesSort('vehicleNo')}>
+                        Vehicle / Mark {purchasesSortField === 'vehicleNo' ? (purchasesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
                       <th>Product Items bought</th>
                       <th style={{ textAlign: 'center' }}>Quantity</th>
                       <th style={{ textAlign: 'right' }}>Cost Price</th>
-                      <th style={{ textAlign: 'right' }}>Total Cost</th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePurchasesSort('totalCost')}>
+                        Total Cost {purchasesSortField === 'totalCost' ? (purchasesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPurchases.flatMap((pur) => 
+                    {sortedFilteredPurchases.flatMap((pur) => 
                       pur.items.map((item, idx) => (
                         <tr key={`${pur.id}-${idx}`}>
                           {idx === 0 ? (
                             <td rowSpan={pur.items.length} style={{ fontWeight: 600, verticalAlign: 'top' }}>
                               {pur.invoiceNo}
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatDateTime(pur.date)}</div>
-                              {pur.vehicleNo && <div style={{ fontSize: '0.7rem', color: 'var(--primary)', marginTop: '0.2rem' }}>🚚 {pur.vehicleNo}</div>}
-                              {pur.lotNo && <div style={{ fontSize: '0.7rem', color: 'var(--success)', marginTop: '0.1rem' }}>📦 Lot: {pur.lotNo}</div>}
-                              {pur.vehicleMark && <div style={{ fontSize: '0.7rem', color: 'var(--warning)', marginTop: '0.1rem' }}>🏷️ Mark: {pur.vehicleMark}</div>}
                             </td>
                           ) : null}
                           {idx === 0 ? (
                             <td rowSpan={pur.items.length} style={{ verticalAlign: 'top' }}>
                               <div>{suppliers.find(s => s.id === pur.supplierId)?.name || pur.supplierId}</div>
                               <div style={{ fontSize: '0.75rem', marginTop: '0.2rem' }} className="badge badge-warning">{pur.paymentStatus}</div>
+                            </td>
+                          ) : null}
+                          {idx === 0 ? (
+                            <td rowSpan={pur.items.length} style={{ verticalAlign: 'top' }}>
+                              {pur.lotNo ? (
+                                <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  {pur.lotNo}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>-</span>
+                              )}
+                            </td>
+                          ) : null}
+                          {idx === 0 ? (
+                            <td rowSpan={pur.items.length} style={{ verticalAlign: 'top' }}>
+                              {pur.vehicleNo ? (
+                                <div>
+                                  <span style={{ background: 'var(--info-light)', color: 'var(--info)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                    {pur.vehicleNo}
+                                  </span>
+                                  {pur.vehicleMark && (
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                                      Mark: {pur.vehicleMark}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)' }}>-</span>
+                              )}
                             </td>
                           ) : null}
                           <td>
@@ -1762,38 +2258,28 @@ export const Reports: React.FC = () => {
                 <table className="custom-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th>Product Name</th>
-                      <th style={{ textAlign: 'right' }}>Purchase Cost</th>
-                      <th style={{ textAlign: 'right' }}>Sales Price</th>
-                      <th style={{ textAlign: 'right' }}>Profit Per Item</th>
-                      <th style={{ textAlign: 'center' }}>Quantity Sold</th>
-                      <th style={{ textAlign: 'right' }}>Total Profit Earned</th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesProfitSort('name')}>
+                        Product Name {salesProfitSortField === 'name' ? (salesProfitSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesProfitSort('cost')}>
+                        Purchase Cost {salesProfitSortField === 'cost' ? (salesProfitSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesProfitSort('sale')}>
+                        Sales Price {salesProfitSortField === 'sale' ? (salesProfitSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesProfitSort('profitPerItem')}>
+                        Profit Per Item {salesProfitSortField === 'profitPerItem' ? (salesProfitSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'center', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesProfitSort('qty')}>
+                        Quantity Sold {salesProfitSortField === 'qty' ? (salesProfitSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSalesProfitSort('totalProfit')}>
+                        Total Profit Earned {salesProfitSortField === 'totalProfit' ? (salesProfitSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Compute aggregations */}
-                    {Object.values(
-                      filteredSales.reduce((acc, sale) => {
-                        sale.items.forEach(item => {
-                          const key = item.productId + (item.variationId ? '-' + item.variationId : '');
-                          if (acc[key]) {
-                            acc[key].qty += item.qty;
-                            acc[key].bags += item.bags || 0;
-                          } else {
-                            acc[key] = {
-                              id: key,
-                              name: item.name,
-                              cost: item.purchasePrice,
-                              sale: item.salesPrice,
-                              qty: item.qty,
-                              bags: item.bags || 0,
-                              variationMark: item.variationMark
-                            };
-                          }
-                        });
-                        return acc;
-                      }, {} as { [key: string]: { id: string; name: string; cost: number; sale: number; qty: number; bags: number; variationMark?: string } })
-                    ).map((aggItem) => {
+                    {sortedSalesProfitItems.map((aggItem) => {
                       const unitProfit = aggItem.sale - aggItem.cost;
                       const totalItemProfit = unitProfit * aggItem.qty;
                       return (
@@ -1865,48 +2351,81 @@ export const Reports: React.FC = () => {
               <table className="custom-table" style={{ fontSize: '0.85rem' }}>
                 <thead>
                   <tr>
-                    <th>Product Name</th>
-                    <th>Mark</th>
-                    <th>Barcode</th>
-                    <th>Category</th>
-                    <th style={{ textAlign: 'center' }}>In Stock</th>
-                    <th style={{ textAlign: 'right' }}>Cost Price</th>
-                    <th style={{ textAlign: 'right' }}>Total Cost Value</th>
-                    <th style={{ textAlign: 'right' }}>Retail Price</th>
-                    <th style={{ textAlign: 'right' }}>Total Retail Value</th>
-                    <th style={{ textAlign: 'right' }}>Potential Profit</th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('name')}>
+                      Product Name {stockSortField === 'name' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('variationMark')}>
+                      Mark {stockSortField === 'variationMark' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('lotNo')}>
+                      Lot No {stockSortField === 'lotNo' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('vehicleNo')}>
+                      Vehicle No {stockSortField === 'vehicleNo' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('barcode')}>
+                      Barcode {stockSortField === 'barcode' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('category')}>
+                      Category {stockSortField === 'category' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'center', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('currentStock')}>
+                      In Stock {stockSortField === 'currentStock' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('purchasePrice')}>
+                      Cost Price {stockSortField === 'purchasePrice' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('costVal')}>
+                      Total Cost Value {stockSortField === 'costVal' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('salesPrice')}>
+                      Retail Price {stockSortField === 'salesPrice' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('retailVal')}>
+                      Total Retail Value {stockSortField === 'retailVal' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStockSort('potentialProf')}>
+                      Potential Profit {stockSortField === 'potentialProf' ? (stockSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
                     <th style={{ textAlign: 'center' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stockItemsValuation.map(item => {
+                  {sortedStockValuation.map(item => {
                     const costVal = item.currentStock * item.purchasePrice;
                     const retailVal = item.currentStock * item.salesPrice;
                     const potentialProf = retailVal - costVal;
                     const isOutOfStock = item.currentStock === 0;
                     const isLowStock = item.currentStock <= item.minStockAlert;
+                    const [prodId, varId] = item.id.split('-');
+                    const trace = getProductPurchaseDetails(prodId, varId);
                     return (
                       <tr key={item.id}>
                         <td style={{ fontWeight: 600 }}>
                           <div>{item.name}</div>
-                          {(() => {
-                            const [prodId, varId] = item.id.split('-');
-                            const trace = getProductPurchaseDetails(prodId, varId);
-                            if (trace.lotNo !== '-' || trace.vehicleNo !== '-') {
-                              return (
-                                <div style={{ marginTop: '0.2rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap', fontSize: '0.7rem', fontWeight: 'normal' }}>
-                                  {trace.lotNo !== '-' && <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.05rem 0.25rem', borderRadius: '3px' }}>Lot: {trace.lotNo}</span>}
-                                  {trace.vehicleNo !== '-' && <span style={{ background: 'var(--info-light)', color: 'var(--info)', padding: '0.05rem 0.25rem', borderRadius: '3px' }}>Veh: {trace.vehicleNo}</span>}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
                         </td>
                         <td>
                           {item.variationMark ? (
                             <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.4rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '3px', fontWeight: 600 }}>
                               {item.variationMark}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+                        <td>
+                          {trace.lotNo !== '-' ? (
+                            <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              {trace.lotNo}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+                        <td>
+                          {trace.vehicleNo !== '-' ? (
+                            <span style={{ background: 'var(--info-light)', color: 'var(--info)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              {trace.vehicleNo}
                             </span>
                           ) : (
                             <span style={{ color: 'var(--text-muted)' }}>-</span>
@@ -1977,47 +2496,78 @@ export const Reports: React.FC = () => {
               <table className="custom-table" style={{ fontSize: '0.85rem' }}>
                 <thead>
                   <tr>
-                    <th>Product Name</th>
-                    <th>Mark</th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('name')}>
+                      Product Name {markWiseSortField === 'name' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('variationMark')}>
+                      Mark {markWiseSortField === 'variationMark' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('lotNo')}>
+                      Lot No {markWiseSortField === 'lotNo' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('vehicleNo')}>
+                      Vehicle No {markWiseSortField === 'vehicleNo' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
                     <th>Barcode</th>
                     <th>Category</th>
                     <th style={{ textAlign: 'center' }}>Unit</th>
-                    <th style={{ textAlign: 'center' }}>Qty Sold</th>
-                    <th style={{ textAlign: 'right' }}>Sales Revenue</th>
-                    <th style={{ textAlign: 'right' }}>Sales Profit</th>
-                    <th style={{ textAlign: 'center' }}>Current Stock</th>
-                    <th style={{ textAlign: 'right' }}>Stock Value (Cost)</th>
-                    <th style={{ textAlign: 'right' }}>Stock Value (Retail)</th>
-                    <th style={{ textAlign: 'right' }}>Potential Stock Profit</th>
+                    <th style={{ textAlign: 'center', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('qtySold')}>
+                      Qty Sold {markWiseSortField === 'qtySold' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('salesRevenue')}>
+                      Sales Revenue {markWiseSortField === 'salesRevenue' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('salesProfit')}>
+                      Sales Profit {markWiseSortField === 'salesProfit' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'center', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('currentStock')}>
+                      Current Stock {markWiseSortField === 'currentStock' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('costVal')}>
+                      Stock Value (Cost) {markWiseSortField === 'costVal' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('retailVal')}>
+                      Stock Value (Retail) {markWiseSortField === 'retailVal' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleMarkWiseSort('potentialProf')}>
+                      Potential Stock Profit {markWiseSortField === 'potentialProf' ? (markWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
                     <th style={{ textAlign: 'center' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {markWiseReportItems.map(item => {
+                  {sortedMarkWiseReportItems.map(item => {
                     const isOutOfStock = item.currentStock === 0;
                     const isLowStock = item.currentStock <= item.minStockAlert;
+                    const [prodId, varId] = item.id.split('-');
+                    const trace = getProductPurchaseDetails(prodId, varId);
                     return (
                       <tr key={item.id}>
                         <td style={{ fontWeight: 600 }}>
                           <div>{item.name}</div>
-                          {(() => {
-                            const [prodId, varId] = item.id.split('-');
-                            const trace = getProductPurchaseDetails(prodId, varId);
-                            if (trace.lotNo !== '-' || trace.vehicleNo !== '-') {
-                              return (
-                                <div style={{ marginTop: '0.2rem', display: 'flex', gap: '0.3rem', flexWrap: 'wrap', fontSize: '0.7rem', fontWeight: 'normal' }}>
-                                  {trace.lotNo !== '-' && <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.05rem 0.25rem', borderRadius: '3px' }}>Lot: {trace.lotNo}</span>}
-                                  {trace.vehicleNo !== '-' && <span style={{ background: 'var(--info-light)', color: 'var(--info)', padding: '0.05rem 0.25rem', borderRadius: '3px' }}>Veh: {trace.vehicleNo}</span>}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
                         </td>
                         <td>
                           {item.variationMark ? (
                             <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.4rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '3px', fontWeight: 600 }}>
                               {item.variationMark}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+                        <td>
+                          {trace.lotNo !== '-' ? (
+                            <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              {trace.lotNo}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>-</span>
+                          )}
+                        </td>
+                        <td>
+                          {trace.vehicleNo !== '-' ? (
+                            <span style={{ background: 'var(--info-light)', color: 'var(--info)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              {trace.vehicleNo}
                             </span>
                           ) : (
                             <span style={{ color: 'var(--text-muted)' }}>-</span>
@@ -2096,19 +2646,37 @@ export const Reports: React.FC = () => {
                 <table className="custom-table" style={{ fontSize: '0.85rem' }}>
                   <thead>
                     <tr>
-                      <th>Staff Email</th>
-                      <th>System Role</th>
-                      <th style={{ textAlign: 'center' }}>Invoices Checked</th>
-                      <th style={{ textAlign: 'right' }}>Total Revenue</th>
-                      <th style={{ textAlign: 'right' }}>Total Goods Cost</th>
-                      <th style={{ textAlign: 'right' }}>Net Profit Contribution</th>
-                      <th style={{ textAlign: 'right' }}>Cash Collections</th>
-                      <th style={{ textAlign: 'right' }}>UPI Collections</th>
-                      <th style={{ textAlign: 'right' }}>Card Collections</th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('email')}>
+                        Staff Email {staffWiseSortField === 'email' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('role')}>
+                        System Role {staffWiseSortField === 'role' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'center', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('invoiceCount')}>
+                        Invoices Checked {staffWiseSortField === 'invoiceCount' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('totalRevenue')}>
+                        Total Revenue {staffWiseSortField === 'totalRevenue' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('totalCost')}>
+                        Total Goods Cost {staffWiseSortField === 'totalCost' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('totalProfit')}>
+                        Net Profit Contribution {staffWiseSortField === 'totalProfit' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('cashCollected')}>
+                        Cash Collections {staffWiseSortField === 'cashCollected' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('upiCollected')}>
+                        UPI Collections {staffWiseSortField === 'upiCollected' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleStaffWiseSort('cardCollected')}>
+                        Card Collections {staffWiseSortField === 'cardCollected' ? (staffWiseSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {staffWiseStats.map((stat) => (
+                    {sortedStaffWiseStats.map((stat) => (
                       <tr key={stat.email}>
                         <td style={{ fontWeight: 600 }}>{stat.email}</td>
                         <td>
@@ -2146,7 +2714,32 @@ export const Reports: React.FC = () => {
           {/* Left panel: List of Consignments */}
           <div className="glass-panel" style={{ padding: '1.25rem' }}>
             <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', fontWeight: 600 }}>Select Consignment</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '65vh', overflowY: 'auto' }}>
+            
+            {/* Sorting controls for consignment list */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', alignItems: 'center' }}>
+              <select
+                className="form-control"
+                style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', height: '34px', flex: 1 }}
+                value={consignmentSortField}
+                onChange={(e) => handleConsignmentSort(e.target.value)}
+              >
+                <option value="date">Sort by Date</option>
+                <option value="vehicleNo">Sort by Vehicle No</option>
+                <option value="vehicleMark">Sort by Vehicle Mark</option>
+                <option value="lotNo">Sort by Lot No</option>
+                <option value="purchaseTotal">Sort by Purchase Total</option>
+              </select>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem', height: '34px', minWidth: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onClick={() => setConsignmentSortAsc(!consignmentSortAsc)}
+                title={consignmentSortAsc ? "Ascending" : "Descending"}
+              >
+                {consignmentSortAsc ? '▲' : '▼'}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '60vh', overflowY: 'auto' }}>
               <button
                 className="btn btn-secondary"
                 style={{ justifyContent: 'flex-start', padding: '0.6rem 0.8rem', textAlign: 'left', width: '100%' }}
@@ -2165,7 +2758,7 @@ export const Reports: React.FC = () => {
               
               <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.5rem 0' }}></div>
               
-              {consignments.map((c, i) => {
+              {sortedConsignments.map((c, i) => {
                 const isSelected = selectedConsignment && 
                   selectedConsignment.vehicleNo === c.vehicleNo &&
                   selectedConsignment.vehicleMark === c.vehicleMark &&
