@@ -126,6 +126,31 @@ export interface Supplier {
   due: number; // amount we owe the supplier
 }
 
+export interface PattiOtherExpense {
+  id: string;
+  label: string;
+  amount: number;
+}
+
+export interface PattiRecord {
+  id: string;
+  billNo: string;
+  date: string;
+  mark: string;
+  name: string;
+  vehicleNo: string;
+  items: { id: string; itemName: string; rate: number; qty: number; weight: number; amount: number }[];
+  expenses: {
+    rent: number;
+    loading: number;
+    commission: number;
+    otherList: PattiOtherExpense[];
+  };
+  lessAmount: number;
+  notes: string;
+  savedAt: string;
+}
+
 export interface SupplierPayment {
   id: string;
   supplierId: string;
@@ -275,6 +300,7 @@ const KEYS = {
   SETTINGS: 'billing_settings',
   SUPPLIER_PAYMENTS: 'billing_supplier_payments',
   DEALER_PAYMENTS: 'billing_dealer_payments',
+  PATTIS: 'billing_pattis',
 };
 
 // Helper methods to read/write from localStorage
@@ -289,6 +315,7 @@ const getFirebasePath = (key: string): string | null => {
     case 'billing_settings': return 'settings';
     case 'billing_supplier_payments': return 'supplier_payments';
     case 'billing_dealer_payments': return 'dealer_payments';
+    case 'billing_pattis': return 'pattis';
     case 'login_history': return 'login_history';
     case 'app_users': return 'app_users';
     default: return null;
@@ -609,6 +636,23 @@ export const DB = {
       });
       setJSON(KEYS.STOCK_HISTORY, history);
     }
+  },
+
+  // Patti Bills
+  getPattis: (): PattiRecord[] => getJSON<PattiRecord[]>(KEYS.PATTIS, []),
+  savePatti: (patti: PattiRecord): void => {
+    const list = getJSON<PattiRecord[]>(KEYS.PATTIS, []);
+    const idx = list.findIndex(p => p.id === patti.id);
+    if (idx >= 0) {
+      list[idx] = patti;
+    } else {
+      list.unshift(patti);
+    }
+    setJSON(KEYS.PATTIS, list);
+  },
+  deletePatti: (id: string): void => {
+    const list = getJSON<PattiRecord[]>(KEYS.PATTIS, []).filter(p => p.id !== id);
+    setJSON(KEYS.PATTIS, list);
   },
 
   // Settings

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { DB, PattiRecord } from '../utils/db';
 import {
   FileText,
   Plus,
@@ -10,6 +11,7 @@ import {
   Eye,
   RefreshCw,
   PlusCircle,
+  Save,
 } from 'lucide-react';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -90,8 +92,9 @@ const defaultPatti = (): PattiData => ({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const Patti: React.FC = () => {
-  const { settings } = useApp();
+  const { settings, showToast } = useApp();
   const [patti, setPatti] = useState<PattiData>(defaultPatti());
+  const [billId] = useState<string>(() => 'PATTI-' + Date.now());
   const [showPreview, setShowPreview] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -172,6 +175,24 @@ export const Patti: React.FC = () => {
     if (confirm('Reset and create a new Patti?')) setPatti(defaultPatti());
   };
 
+  // ── Save to database ──────────────────────────────────────────────────────
+  const saveToDB = useCallback((pattiData: PattiData, iTotal: number, eTotal: number, gross: number, grand: number) => {
+    const record: PattiRecord = {
+      id: billId,
+      billNo: pattiData.billNo,
+      date: pattiData.date,
+      mark: pattiData.mark,
+      name: pattiData.name,
+      vehicleNo: pattiData.vehicleNo,
+      items: pattiData.items,
+      expenses: pattiData.expenses,
+      lessAmount: pattiData.lessAmount,
+      notes: pattiData.notes,
+      savedAt: new Date().toISOString(),
+    };
+    DB.savePatti(record);
+  }, [billId]);
+
   // ── Print / PDF ─────────────────────────────────────────────────────────────
   const handlePrint = useCallback(() => {
     const html = buildPrintHtml(patti, settings, itemsTotal, expensesTotal, grossTotal, grandTotal);
@@ -180,7 +201,8 @@ export const Patti: React.FC = () => {
     win.document.write(html);
     win.document.close();
     setTimeout(() => win.print(), 400);
-  }, [patti, settings, itemsTotal, expensesTotal, grossTotal, grandTotal]);
+    saveToDB(patti, itemsTotal, expensesTotal, grossTotal, grandTotal);
+  }, [patti, settings, itemsTotal, expensesTotal, grossTotal, grandTotal, saveToDB]);
 
   const handleDownloadPDF = useCallback(() => {
     const html = buildPrintHtml(patti, settings, itemsTotal, expensesTotal, grossTotal, grandTotal, true);
@@ -189,7 +211,13 @@ export const Patti: React.FC = () => {
     win.document.write(html);
     win.document.close();
     setTimeout(() => win.print(), 600);
-  }, [patti, settings, itemsTotal, expensesTotal, grossTotal, grandTotal]);
+    saveToDB(patti, itemsTotal, expensesTotal, grossTotal, grandTotal);
+  }, [patti, settings, itemsTotal, expensesTotal, grossTotal, grandTotal, saveToDB]);
+
+  const handleSaveBill = useCallback(() => {
+    saveToDB(patti, itemsTotal, expensesTotal, grossTotal, grandTotal);
+    showToast(`Patti ${patti.billNo} saved to reports!`, 'success');
+  }, [patti, itemsTotal, expensesTotal, grossTotal, grandTotal, saveToDB, showToast]);
 
   const fmt = (n: number) => `₹${n.toFixed(2)}`;
   const fmtN = (n: number) => n.toFixed(3);
@@ -211,6 +239,9 @@ export const Patti: React.FC = () => {
           </button>
           <button className="btn btn-primary" onClick={handleDownloadPDF}>
             <Download size={16} /><span>Save PDF</span>
+          </button>
+          <button className="btn btn-secondary" onClick={handleSaveBill} title="Save bill to Reports">
+            <Save size={16} /><span>Save</span>
           </button>
           <button className="btn btn-secondary" onClick={resetForm}>
             <RefreshCw size={16} /><span>New</span>

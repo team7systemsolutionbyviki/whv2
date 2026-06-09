@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransaction, SaleItem, ProductVariation, SupplierPayment, DealerPayment } from '../utils/db';
+import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransaction, SaleItem, ProductVariation, SupplierPayment, DealerPayment, PattiRecord } from '../utils/db';
 import { rtdb, isMockMode } from '../utils/firebase';
 import { ref, onValue } from 'firebase/database';
 
@@ -47,6 +47,7 @@ interface AppContextType {
   purchases: Purchase[];
   stockHistory: StockTransaction[];
   settings: Settings;
+  pattis: PattiRecord[];
   refreshData: () => void;
   
   // POS Carts
@@ -110,6 +111,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [stockHistory, setStockHistory] = useState<StockTransaction[]>([]);
   const [settings, setSettings] = useState<Settings>({} as Settings);
+  const [pattis, setPattis] = useState<PattiRecord[]>([]);
 
   // Cart & Customers
   const [retailCart, setRetailCart] = useState<CartItem[]>([]);
@@ -277,6 +279,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPurchases(DB.getPurchases());
     setStockHistory(DB.getStockHistory());
     setSettings(DB.getSettings());
+    setPattis(DB.getPattis());
   };
 
   const setDarkMode = (dark: boolean) => {
@@ -748,6 +751,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         purchases,
         stockHistory,
         settings,
+        pattis,
         refreshData,
         
         retailCart,

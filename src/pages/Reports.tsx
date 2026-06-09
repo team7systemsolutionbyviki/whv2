@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
-import { DB, Sale, Purchase } from '../utils/db';
+import { DB, Sale, Purchase, PattiRecord } from '../utils/db';
 import { 
   BarChart3, 
   Download, 
@@ -11,12 +11,15 @@ import {
   ShoppingBag, 
   FileSpreadsheet,
   FileText,
-  AlertCircle
+  AlertCircle,
+  ClipboardList,
+  ArrowUpDown,
+  Trash2
 } from 'lucide-react';
 
 export const Reports: React.FC = () => {
-  const { sales, purchases, products, settings, dealers, suppliers } = useApp();
-  const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'stock' | 'mark_wise' | 'staff_wise'>('sales');
+  const { sales, purchases, products, settings, dealers, suppliers, pattis } = useApp();
+  const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'stock' | 'mark_wise' | 'staff_wise' | 'patti'>('sales');
 
   // General Report Sorting States
   const [salesSortField, setSalesSortField] = useState<string>('date');
@@ -36,6 +39,14 @@ export const Reports: React.FC = () => {
 
   const [staffWiseSortField, setStaffWiseSortField] = useState<string>('email');
   const [staffWiseSortAsc, setStaffWiseSortAsc] = useState<boolean>(true);
+
+  // Patti report states
+  const [pattiSortField, setPattiSortField] = useState<string>('date');
+  const [pattiSortAsc, setPattiSortAsc] = useState<boolean>(false);
+  const [pattiDateFilter, setPattiDateFilter] = useState<'today' | 'week' | 'month' | 'custom' | 'all'>('all');
+  const [pattiNameFilter, setPattiNameFilter] = useState<string>('');
+  const [pattiVehicleFilter, setPattiVehicleFilter] = useState<string>('');
+  const [pattiMarkFilter, setPattiMarkFilter] = useState<string>('');
 
 
 
@@ -774,6 +785,72 @@ export const Reports: React.FC = () => {
     }
   };
 
+  // Patti report filter + sort
+  const filteredPattis = React.useMemo(() => {
+    const today = new Date();
+    return pattis.filter(p => {
+      const d = new Date(p.date);
+      let dateOk = true;
+      if (pattiDateFilter === 'today') {
+        dateOk = d.toDateString() === today.toDateString();
+      } else if (pattiDateFilter === 'week') {
+        const ago = new Date(); ago.setDate(today.getDate() - 7);
+        dateOk = d >= ago;
+      } else if (pattiDateFilter === 'month') {
+        const ago = new Date(); ago.setDate(today.getDate() - 30);
+        dateOk = d >= ago;
+      } else if (pattiDateFilter === 'custom') {
+        const start = new Date(startDate); start.setHours(0,0,0,0);
+        const end = new Date(endDate); end.setHours(23,59,59,999);
+        dateOk = d >= start && d <= end;
+      }
+      const nameOk = !pattiNameFilter || p.name.toLowerCase().includes(pattiNameFilter.toLowerCase());
+      const vehicleOk = !pattiVehicleFilter || (p.vehicleNo || '').toLowerCase().includes(pattiVehicleFilter.toLowerCase());
+      const markOk = !pattiMarkFilter || (p.mark || '').toLowerCase().includes(pattiMarkFilter.toLowerCase());
+      return dateOk && nameOk && vehicleOk && markOk;
+    });
+  }, [pattis, pattiDateFilter, pattiNameFilter, pattiVehicleFilter, pattiMarkFilter, startDate, endDate]);
+
+  const sortedPattis = React.useMemo(() => {
+    return [...filteredPattis].sort((a, b) => {
+      let va: any = 0, vb: any = 0;
+      const aItems = a.items.reduce((s, i) => s + i.amount, 0);
+      const bItems = b.items.reduce((s, i) => s + i.amount, 0);
+      const aExp = a.expenses.rent + a.expenses.loading + a.expenses.commission + a.expenses.otherList.reduce((s,o) => s+o.amount, 0);
+      const bExp = b.expenses.rent + b.expenses.loading + b.expenses.commission + b.expenses.otherList.reduce((s,o) => s+o.amount, 0);
+      const aGrand = aItems + aExp - a.lessAmount;
+      const bGrand = bItems + bExp - b.lessAmount;
+      switch (pattiSortField) {
+        case 'date': va = new Date(a.date).getTime(); vb = new Date(b.date).getTime(); break;
+        case 'billNo': va = a.billNo; vb = b.billNo; break;
+        case 'name': va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
+        case 'vehicleNo': va = (a.vehicleNo||'').toLowerCase(); vb = (b.vehicleNo||'').toLowerCase(); break;
+        case 'mark': va = (a.mark||'').toLowerCase(); vb = (b.mark||'').toLowerCase(); break;
+        case 'itemsTotal': va = aItems; vb = bItems; break;
+        case 'expenses': va = aExp; vb = bExp; break;
+        case 'grandTotal': va = aGrand; vb = bGrand; break;
+        default: va = new Date(a.date).getTime(); vb = new Date(b.date).getTime();
+      }
+      if (va < vb) return pattiSortAsc ? -1 : 1;
+      if (va > vb) return pattiSortAsc ? 1 : -1;
+      return 0;
+    });
+  }, [filteredPattis, pattiSortField, pattiSortAsc]);
+
+  const handlePattiSort = (field: string) => {
+    if (pattiSortField === field) setPattiSortAsc(!pattiSortAsc);
+    else { setPattiSortField(field); setPattiSortAsc(true); }
+  };
+
+  const pattiGrandTotals = React.useMemo(() => {
+    return sortedPattis.reduce((acc, p) => {
+      const items = p.items.reduce((s, i) => s + i.amount, 0);
+      const exp = p.expenses.rent + p.expenses.loading + p.expenses.commission + p.expenses.otherList.reduce((s,o)=>s+o.amount,0);
+      const grand = items + exp - p.lessAmount;
+      return { items: acc.items + items, exp: acc.exp + exp, grand: acc.grand + grand, qty: acc.qty + p.items.reduce((s,i)=>s+i.qty,0), weight: acc.weight + p.items.reduce((s,i)=>s+i.weight,0) };
+    }, { items: 0, exp: 0, grand: 0, qty: 0, weight: 0 });
+  }, [sortedPattis]);
+
 
 
   // CSV Exporter helper
@@ -896,6 +973,22 @@ export const Reports: React.FC = () => {
       });
       fileName = `Mark_Wise_Report_${new Date().toISOString().slice(0, 10)}.csv`;
 
+    } else if (activeReport === 'patti') {
+      headers = ['Bill No', 'Date', 'Party Name', 'Vehicle No', 'Mark', 'Items Total (₹)', 'Rent', 'Loading', 'Commission', 'Other Expenses', 'Total Expenses (₹)', 'Less', 'Grand Total (₹)', 'Notes'];
+      rows = sortedPattis.map(p => {
+        const items = p.items.reduce((s, i) => s + i.amount, 0);
+        const exp = p.expenses.rent + p.expenses.loading + p.expenses.commission + p.expenses.otherList.reduce((s,o)=>s+o.amount,0);
+        const grand = items + exp - p.lessAmount;
+        const otherStr = p.expenses.otherList.map(o=>`${o.label||'Other'}:${o.amount.toFixed(2)}`).join(' | ');
+        return [
+          p.billNo, new Date(p.date).toLocaleDateString('en-IN'),
+          p.name, p.vehicleNo||'-', p.mark||'-',
+          items.toFixed(2), p.expenses.rent.toFixed(2), p.expenses.loading.toFixed(2),
+          p.expenses.commission.toFixed(2), otherStr || '0',
+          exp.toFixed(2), p.lessAmount.toFixed(2), grand.toFixed(2), p.notes||''
+        ];
+      });
+      fileName = `Patti_Report_${new Date().toISOString().slice(0,10)}.csv`;
     } else {
       // Staff Wise Report
       headers = ['Staff Email', 'Role', 'Invoices Count', 'Revenue (INR)', 'Cost Value (INR)', 'Net Profit (INR)', 'Cash Collected (INR)', 'UPI Collected (INR)', 'Card Collected (INR)'];
@@ -1360,6 +1453,13 @@ export const Reports: React.FC = () => {
           >
             Staff Wise Sales
           </button>
+          <button 
+            className={`btn ${activeReport === 'patti' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveReport('patti')}
+          >
+            <ClipboardList size={14} style={{ display: 'inline', marginRight: '4px' }} />
+            Patti Report
+          </button>
         </div>
       </div>
 
@@ -1512,6 +1612,177 @@ export const Reports: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* ── Patti Report Tab ─────────────────────────────────────────────── */}
+      {activeReport === 'patti' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Patti-specific date filter strip */}
+          <div className="glass-panel" style={{ padding: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <Calendar size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Date:</span>
+            {(['all', 'today', 'week', 'month', 'custom'] as const).map(f => (
+              <button
+                key={f}
+                className={`btn ${pattiDateFilter === f ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '0.3rem 0.7rem', fontSize: '0.75rem', borderRadius: '15px' }}
+                onClick={() => setPattiDateFilter(f)}
+              >
+                {f === 'all' ? 'All Time' : f === 'today' ? 'Today' : f === 'week' ? 'Last 7 Days' : f === 'month' ? 'Last 30 Days' : 'Custom'}
+              </button>
+            ))}
+            {pattiDateFilter === 'custom' && (
+              <>
+                <input type="date" className="form-control" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', width: '130px' }} value={startDate} onChange={e => setStartDate(e.target.value)} />
+                <span style={{ fontSize: '0.8rem' }}>to</span>
+                <input type="date" className="form-control" style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', width: '130px' }} value={endDate} onChange={e => setEndDate(e.target.value)} />
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto', flexWrap: 'wrap' }}>
+              <input
+                className="form-control"
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', width: '140px' }}
+                placeholder="Search party name…"
+                value={pattiNameFilter}
+                onChange={e => setPattiNameFilter(e.target.value)}
+              />
+              <input
+                className="form-control"
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', width: '120px' }}
+                placeholder="Vehicle No…"
+                value={pattiVehicleFilter}
+                onChange={e => setPattiVehicleFilter(e.target.value)}
+              />
+              <input
+                className="form-control"
+                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', width: '100px' }}
+                placeholder="Mark/Lot…"
+                value={pattiMarkFilter}
+                onChange={e => setPattiMarkFilter(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Summary Cards */}
+          <div className="dashboard-grid">
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--primary)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Bills</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>{sortedPattis.length} Bills</h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--info)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Items Total</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>₹{pattiGrandTotals.items.toFixed(2)}</h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Expenses</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--danger)' }}>₹{pattiGrandTotals.exp.toFixed(2)}</h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--success)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Grand Total</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--success)' }}>₹{pattiGrandTotals.grand.toFixed(2)}</h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--primary)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Weight</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>{pattiGrandTotals.weight.toFixed(3)} Kg</h3>
+            </div>
+          </div>
+
+          {/* Patti Table */}
+          <div className="glass-panel" style={{ padding: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Patti Bills</h3>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{sortedPattis.length} records</span>
+            </div>
+
+            {sortedPattis.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                <ClipboardList size={32} style={{ opacity: 0.4, marginBottom: '0.5rem' }} />
+                <p>No patti bills found for the selected filters.</p>
+                <p style={{ fontSize: '0.82rem' }}>Create and save a Patti bill from the Patti menu to see it here.</p>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="custom-table" style={{ fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr>
+                      {[
+                        { field: 'date', label: 'Date' },
+                        { field: 'billNo', label: 'Bill No' },
+                        { field: 'name', label: 'Party Name' },
+                        { field: 'vehicleNo', label: 'Vehicle No' },
+                        { field: 'mark', label: 'Mark/Lot' },
+                        { field: 'itemsTotal', label: 'Items (₹)' },
+                        { field: 'expenses', label: 'Expenses (₹)' },
+                        { field: 'grandTotal', label: 'Grand Total (₹)' },
+                      ].map(({ field, label }) => (
+                        <th
+                          key={field}
+                          style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                          onClick={() => handlePattiSort(field)}
+                        >
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            {label}
+                            <ArrowUpDown size={11} style={{ opacity: pattiSortField === field ? 1 : 0.35 }} />
+                            {pattiSortField === field && (
+                              <span style={{ fontSize: '0.65rem', color: 'var(--primary)' }}>
+                                {pattiSortAsc ? '▲' : '▼'}
+                              </span>
+                            )}
+                          </span>
+                        </th>
+                      ))}
+                      <th style={{ width: '30px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedPattis.map(p => {
+                      const itemsTotal = p.items.reduce((s, i) => s + i.amount, 0);
+                      const expTotal = p.expenses.rent + p.expenses.loading + p.expenses.commission + p.expenses.otherList.reduce((s,o)=>s+o.amount,0);
+                      const grand = itemsTotal + expTotal - p.lessAmount;
+                      return (
+                        <tr key={p.id}>
+                          <td>{new Date(p.date).toLocaleDateString('en-IN')}</td>
+                          <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{p.billNo}</td>
+                          <td>{p.name}</td>
+                          <td style={{ fontFamily: 'monospace', letterSpacing: '0.05em' }}>{p.vehicleNo || '-'}</td>
+                          <td>{p.mark || '-'}</td>
+                          <td style={{ textAlign: 'right' }}>₹{itemsTotal.toFixed(2)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--danger)' }}>₹{expTotal.toFixed(2)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>₹{grand.toFixed(2)}</td>
+                          <td>
+                            <button
+                              className="btn btn-ghost btn-icon"
+                              title="Delete this Patti record"
+                              style={{ padding: '0.2rem', color: 'var(--danger)' }}
+                              onClick={() => {
+                                if (confirm(`Delete patti ${p.billNo}?`)) {
+                                  DB.deletePatti(p.id);
+                                  window.dispatchEvent(new CustomEvent('local-db-update'));
+                                }
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'var(--bg-sidebar)', fontWeight: 700, fontSize: '0.85rem' }}>
+                      <td colSpan={5} style={{ padding: '0.5rem' }}>Total ({sortedPattis.length} Bills)</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right' }}>₹{pattiGrandTotals.items.toFixed(2)}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--danger)' }}>₹{pattiGrandTotals.exp.toFixed(2)}</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--success)' }}>₹{pattiGrandTotals.grand.toFixed(2)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Sales Report Tab */}
       {activeReport === 'sales' && (
