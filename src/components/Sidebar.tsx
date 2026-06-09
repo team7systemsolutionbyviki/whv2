@@ -15,7 +15,8 @@ import {
   Bell,
   LogOut,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  ClipboardList
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -40,6 +41,7 @@ export const Sidebar: React.FC = () => {
     },
     { id: 'reports' as ActiveTab, name: 'Reports', icon: BarChart3 },
     { id: 'profit_adder' as ActiveTab, name: 'Profit Adder', icon: TrendingUp },
+    { id: 'patti' as ActiveTab, name: 'Patti', icon: ClipboardList },
     { id: 'settings' as ActiveTab, name: 'Settings', icon: Settings },
   ];
 

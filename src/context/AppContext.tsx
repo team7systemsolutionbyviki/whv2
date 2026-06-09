@@ -3,7 +3,7 @@ import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransacti
 import { rtdb, isMockMode } from '../utils/firebase';
 import { ref, onValue } from 'firebase/database';
 
-export type ActiveTab = 'dashboard' | 'products' | 'pos' | 'wholesale' | 'purchases' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers';
+export type ActiveTab = 'dashboard' | 'products' | 'pos' | 'wholesale' | 'purchases' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers' | 'patti';
 
 export interface CartItem {
   product: Product;
