@@ -210,6 +210,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+  // Keep retailCart and wholesaleCart synchronized with database updates (prices, stock, units)
+  useEffect(() => {
+    setRetailCart((prevCart) => {
+      let changed = false;
+      const newCart = prevCart.map((item) => {
+        const dbProduct = products.find((p) => p.id === item.product.id);
+        if (!dbProduct) return item;
+
+        let dbVariation: ProductVariation | undefined;
+        if (item.variation && dbProduct.variations) {
+          dbVariation = dbProduct.variations.find((v) => v.id === item.variation!.id);
+        }
+
+        const productChanged = JSON.stringify(item.product) !== JSON.stringify(dbProduct);
+        const variationChanged = JSON.stringify(item.variation) !== JSON.stringify(dbVariation);
+
+        if (productChanged || variationChanged) {
+          changed = true;
+          return {
+            ...item,
+            product: dbProduct,
+            variation: dbVariation,
+          };
+        }
+        return item;
+      });
+      return changed ? newCart : prevCart;
+    });
+
+    setWholesaleCart((prevCart) => {
+      let changed = false;
+      const newCart = prevCart.map((item) => {
+        const dbProduct = products.find((p) => p.id === item.product.id);
+        if (!dbProduct) return item;
+
+        let dbVariation: ProductVariation | undefined;
+        if (item.variation && dbProduct.variations) {
+          dbVariation = dbProduct.variations.find((v) => v.id === item.variation!.id);
+        }
+
+        const productChanged = JSON.stringify(item.product) !== JSON.stringify(dbProduct);
+        const variationChanged = JSON.stringify(item.variation) !== JSON.stringify(dbVariation);
+
+        if (productChanged || variationChanged) {
+          changed = true;
+          return {
+            ...item,
+            product: dbProduct,
+            variation: dbVariation,
+          };
+        }
+        return item;
+      });
+      return changed ? newCart : prevCart;
+    });
+  }, [products]);
+
   const refreshData = () => {
     setProducts(DB.getProducts());
     setDealers(DB.getDealers());

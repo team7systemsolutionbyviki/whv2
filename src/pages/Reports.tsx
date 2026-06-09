@@ -16,19 +16,7 @@ import {
 
 export const Reports: React.FC = () => {
   const { sales, purchases, products, settings, dealers, suppliers } = useApp();
-  const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'stock' | 'mark_wise' | 'staff_wise' | 'patti'>('sales');
-
-  // Patti Report States
-  const [selectedConsignment, setSelectedConsignment] = useState<{ vehicleNo: string; vehicleMark: string; lotNo: string; purchaseTotal: number; items: any[] } | null>(null);
-  const [manualRent, setManualRent] = useState('0');
-  const [manualLoading, setManualLoading] = useState('0');
-  const [manualCommission, setManualCommission] = useState('0');
-  const [manualOther, setManualOther] = useState('0');
-  const [adjPurchases, setAdjPurchases] = useState('0');
-  const [adjSales, setAdjSales] = useState('0');
-  const [pattiSortKey, setPattiSortKey] = useState<string>('name');
-  const [pattiSortOrder, setPattiSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [pattiSearchQuery, setPattiSearchQuery] = useState<string>('');
+  const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'stock' | 'mark_wise' | 'staff_wise'>('sales');
 
   // General Report Sorting States
   const [salesSortField, setSalesSortField] = useState<string>('date');
@@ -49,8 +37,7 @@ export const Reports: React.FC = () => {
   const [staffWiseSortField, setStaffWiseSortField] = useState<string>('email');
   const [staffWiseSortAsc, setStaffWiseSortAsc] = useState<boolean>(true);
 
-  const [consignmentSortField, setConsignmentSortField] = useState<string>('date');
-  const [consignmentSortAsc, setConsignmentSortAsc] = useState<boolean>(false);
+
 
 
   const getProductPurchaseDetails = (productId: string, variationId?: string) => {
@@ -282,233 +269,9 @@ export const Reports: React.FC = () => {
   const totalMarkStockRetail = markWiseReportItems.reduce((sum, item) => sum + item.retailVal, 0);
   const totalMarkStockProfit = markWiseReportItems.reduce((sum, item) => sum + item.potentialProf, 0);
 
-  const consignments = React.useMemo(() => {
-    const list: Array<{ vehicleNo: string; vehicleMark: string; lotNo: string; purchaseTotal: number; items: any[] }> = [];
-    purchases.forEach(p => {
-      const veh = p.vehicleNo || '';
-      const mark = p.vehicleMark || '';
-      const lot = p.lotNo || '';
-      if (!veh && !mark && !lot) return;
-      
-      const key = `${veh}-${mark}-${lot}`;
-      const existing = list.find(x => `${x.vehicleNo}-${x.vehicleMark}-${x.lotNo}` === key);
-      
-      const purchaseTotal = p.items.reduce((s, item) => s + item.total, 0);
-      
-      if (existing) {
-        existing.purchaseTotal += purchaseTotal;
-        p.items.forEach(item => {
-          if (!existing.items.some(i => i.productId === item.productId && i.variationId === item.variationId)) {
-            existing.items.push(item);
-          }
-        });
-      } else {
-        list.push({
-          vehicleNo: veh,
-          vehicleMark: mark,
-          lotNo: lot,
-          purchaseTotal,
-          items: [...p.items]
-        });
-      }
-    });
-    return list;
-  }, [purchases]);
 
-  const getSalesForConsignment = (consignmentItems: any[]) => {
-    let salesTotal = 0;
-    sales.forEach(s => {
-      if (s.status !== 'completed') return;
-      s.items.forEach(item => {
-        const match = consignmentItems.some(ci => 
-          ci.productId === item.productId && 
-          (!ci.variationId || ci.variationId === item.variationId)
-        );
-        if (match) {
-          salesTotal += item.total;
-        }
-      });
-    });
-    return salesTotal;
-  };
 
-  // Compute itemized details for selected consignment (dues, balance stock, sales)
-  const pattiItems = React.useMemo(() => {
-    if (!selectedConsignment) return [];
-    
-    const itemsMap: {
-      [key: string]: {
-        productId: string;
-        variationId?: string;
-        name: string;
-        variationMark?: string;
-        purchasedQty: number;
-        purchasedBags: number;
-        purchasePrice: number;
-        soldQty: number;
-        soldBags: number;
-        salesPrice: number;
-        unit: string;
-        lotNo: string;
-        supplierNames: string[];
-        customerNames: string[];
-      }
-    } = {};
 
-    // 1. Purchases matching the selected consignment
-    const matchingPurchases = purchases.filter(p => 
-      (p.vehicleNo || '') === selectedConsignment.vehicleNo &&
-      (p.vehicleMark || '') === selectedConsignment.vehicleMark &&
-      (p.lotNo || '') === selectedConsignment.lotNo
-    );
-
-    matchingPurchases.forEach(p => {
-      const supName = suppliers.find(s => s.id === p.supplierId)?.name || p.supplierId;
-      p.items.forEach(item => {
-        const key = `${item.productId}-${item.variationId || ''}`;
-        const prod = products.find(x => x.id === item.productId);
-        const name = prod?.name || item.name;
-        const variation = prod?.variations?.find(v => v.id === item.variationId);
-        const mark = variation?.mark || item.variationMark;
-        const unit = variation?.unit || prod?.unit || 'kg';
-
-        if (itemsMap[key]) {
-          const prevTotal = itemsMap[key].purchasedQty * itemsMap[key].purchasePrice;
-          itemsMap[key].purchasedQty += item.qty;
-          itemsMap[key].purchasedBags += item.bags || 0;
-          itemsMap[key].purchasePrice = itemsMap[key].purchasedQty > 0 
-            ? (prevTotal + item.total) / itemsMap[key].purchasedQty 
-            : item.purchasePrice;
-          if (supName && !itemsMap[key].supplierNames.includes(supName)) {
-            itemsMap[key].supplierNames.push(supName);
-          }
-        } else {
-          itemsMap[key] = {
-            productId: item.productId,
-            variationId: item.variationId,
-            name,
-            variationMark: mark,
-            purchasedQty: item.qty,
-            purchasedBags: item.bags || 0,
-            purchasePrice: item.purchasePrice,
-            soldQty: 0,
-            soldBags: 0,
-            salesPrice: 0,
-            unit,
-            lotNo: p.lotNo || selectedConsignment.lotNo || '-',
-            supplierNames: supName ? [supName] : [],
-            customerNames: []
-          };
-        }
-      });
-    });
-
-    // 2. Sales matching these variation keys
-    sales.forEach(s => {
-      if (s.status !== 'completed') return;
-      s.items.forEach(item => {
-        const key = `${item.productId}-${item.variationId || ''}`;
-        if (itemsMap[key]) {
-          const prevTotal = itemsMap[key].soldQty * itemsMap[key].salesPrice;
-          itemsMap[key].soldQty += item.qty;
-          itemsMap[key].soldBags += item.bags || 0;
-          itemsMap[key].salesPrice = itemsMap[key].soldQty > 0 
-            ? (prevTotal + item.total) / itemsMap[key].soldQty 
-            : item.salesPrice;
-          if (s.customerName && !itemsMap[key].customerNames.includes(s.customerName)) {
-            itemsMap[key].customerNames.push(s.customerName);
-          }
-        }
-      });
-    });
-
-    return Object.values(itemsMap);
-  }, [selectedConsignment, purchases, sales, products, suppliers]);
-
-  // Filter & Sort consignment items
-  const filteredSortedPattiItems = React.useMemo(() => {
-    let list = [...pattiItems];
-
-    if (pattiSearchQuery) {
-      const q = pattiSearchQuery.toLowerCase();
-      list = list.filter(item => 
-        item.name.toLowerCase().includes(q) || 
-        (item.variationMark || '').toLowerCase().includes(q)
-      );
-    }
-
-    list.sort((a, b) => {
-      let valA: any = 0;
-      let valB: any = 0;
-
-      switch (pattiSortKey) {
-        case 'name':
-          valA = a.name + (a.variationMark || '');
-          valB = b.name + (b.variationMark || '');
-          break;
-        case 'lotNo':
-          valA = a.lotNo || '';
-          valB = b.lotNo || '';
-          break;
-        case 'supplierNames':
-          valA = a.supplierNames.join(', ').toLowerCase();
-          valB = b.supplierNames.join(', ').toLowerCase();
-          break;
-        case 'customerNames':
-          valA = a.customerNames.join(', ').toLowerCase();
-          valB = b.customerNames.join(', ').toLowerCase();
-          break;
-        case 'purchasedQty':
-          valA = a.purchasedQty;
-          valB = b.purchasedQty;
-          break;
-        case 'soldQty':
-          valA = a.soldQty;
-          valB = b.soldQty;
-          break;
-        case 'balanceStock':
-          valA = a.purchasedQty - a.soldQty;
-          valB = b.purchasedQty - b.soldQty;
-          break;
-        case 'purchasePrice':
-          valA = a.purchasePrice;
-          valB = b.purchasePrice;
-          break;
-        case 'salesPrice':
-          valA = a.salesPrice;
-          valB = b.salesPrice;
-          break;
-        case 'totalPurchase':
-          valA = a.purchasedQty * a.purchasePrice;
-          valB = b.purchasedQty * b.purchasePrice;
-          break;
-        case 'totalSales':
-          valA = a.soldQty * a.salesPrice;
-          valB = b.soldQty * b.salesPrice;
-          break;
-        default:
-          valA = a.name;
-          valB = b.name;
-      }
-
-      if (typeof valA === 'string') {
-        return pattiSortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      } else {
-        return pattiSortOrder === 'asc' ? valA - valB : valB - valA;
-      }
-    });
-
-    return list;
-  }, [pattiItems, pattiSearchQuery, pattiSortKey, pattiSortOrder]);
-
-  const handlePattiSort = (key: string) => {
-    if (pattiSortKey === key) {
-      setPattiSortOrder(pattiSortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setPattiSortKey(key);
-      setPattiSortOrder('asc');
-    }
-  };
 
   const staffWiseStats = React.useMemo(() => {
     const groups: {
@@ -955,57 +718,7 @@ export const Reports: React.FC = () => {
     return list;
   }, [staffWiseStats, staffWiseSortField, staffWiseSortAsc]);
 
-  const sortedConsignments = React.useMemo(() => {
-    let list = [...consignments];
-    list.sort((a, b) => {
-      let valA: any = '';
-      let valB: any = '';
 
-      switch (consignmentSortField) {
-        case 'vehicleNo':
-          valA = a.vehicleNo.toLowerCase();
-          valB = b.vehicleNo.toLowerCase();
-          break;
-        case 'vehicleMark':
-          valA = a.vehicleMark.toLowerCase();
-          valB = b.vehicleMark.toLowerCase();
-          break;
-        case 'lotNo':
-          valA = a.lotNo.toLowerCase();
-          valB = b.lotNo.toLowerCase();
-          break;
-        case 'purchaseTotal':
-          valA = a.purchaseTotal;
-          valB = b.purchaseTotal;
-          break;
-        case 'date': {
-          const matchingPurchasesA = purchases.filter(p => 
-            (p.vehicleNo || '') === a.vehicleNo &&
-            (p.vehicleMark || '') === a.vehicleMark &&
-            (p.lotNo || '') === a.lotNo
-          );
-          const matchingPurchasesB = purchases.filter(p => 
-            (p.vehicleNo || '') === b.vehicleNo &&
-            (p.vehicleMark || '') === b.vehicleMark &&
-            (p.lotNo || '') === b.lotNo
-          );
-          const timeA = matchingPurchasesA.length > 0 ? new Date(matchingPurchasesA[0].date).getTime() : 0;
-          const timeB = matchingPurchasesB.length > 0 ? new Date(matchingPurchasesB[0].date).getTime() : 0;
-          valA = timeA;
-          valB = timeB;
-          break;
-        }
-        default:
-          valA = a.vehicleNo.toLowerCase();
-          valB = b.vehicleNo.toLowerCase();
-      }
-
-      if (valA < valB) return consignmentSortAsc ? -1 : 1;
-      if (valA > valB) return consignmentSortAsc ? 1 : -1;
-      return 0;
-    });
-    return list;
-  }, [consignments, consignmentSortField, consignmentSortAsc, purchases]);
 
   const handleSalesSort = (field: string) => {
     if (salesSortField === field) {
@@ -1061,14 +774,7 @@ export const Reports: React.FC = () => {
     }
   };
 
-  const handleConsignmentSort = (field: string) => {
-    if (consignmentSortField === field) {
-      setConsignmentSortAsc(!consignmentSortAsc);
-    } else {
-      setConsignmentSortField(field);
-      setConsignmentSortAsc(true);
-    }
-  };
+
 
   // CSV Exporter helper
 
@@ -1189,56 +895,7 @@ export const Reports: React.FC = () => {
         ];
       });
       fileName = `Mark_Wise_Report_${new Date().toISOString().slice(0, 10)}.csv`;
-    } else if (activeReport === 'patti') {
-      headers = [
-        'Vehicle No', 'Vehicle Mark', 'Lot No', 
-        'Total Sales Realization (INR)', 'Total Purchase Cost (INR)', 
-        'Rent Expense (INR)', 'Loading Expense (INR)', 
-        'Commission (INR)', 'Other Expense (INR)', 'Grand Total Net (INR)'
-      ];
-      const rent = parseFloat(manualRent) || 0;
-      const loading = parseFloat(manualLoading) || 0;
-      const comm = parseFloat(manualCommission) || 0;
-      const other = parseFloat(manualOther) || 0;
-      const totalExp = rent + loading + comm + other;
-      const salesVal = parseFloat(adjSales) || 0;
-      const purchVal = parseFloat(adjPurchases) || 0;
-      const grandTotal = salesVal - purchVal - totalExp;
-      rows = [
-        [
-          selectedConsignment?.vehicleNo || 'Manual',
-          selectedConsignment?.vehicleMark || 'Manual',
-          selectedConsignment?.lotNo || 'Manual',
-          salesVal.toFixed(2),
-          purchVal.toFixed(2),
-          rent.toFixed(2),
-          loading.toFixed(2),
-          comm.toFixed(2),
-          other.toFixed(2),
-          grandTotal.toFixed(2)
-        ],
-        [],
-        ['CONSIGNMENT ITEMS BREAKDOWN'],
-        [
-          'Item / Mark', 'Lot No', 'Purchase Supplier', 'Sales Customer', 
-          'Purchased Qty', 'Sold Qty', 'Balance Stock', 
-          'Cost Price (INR)', 'Sale Price (INR)', 'Total Cost (INR)', 'Total Sale (INR)'
-        ],
-        ...pattiItems.map(item => [
-          `${item.name}${item.variationMark ? ` (${item.variationMark})` : ''}`,
-          item.lotNo,
-          item.supplierNames.join('; ') || '-',
-          item.customerNames.join('; ') || '-',
-          item.purchasedQty.toFixed(1),
-          item.soldQty.toFixed(1),
-          (item.purchasedQty - item.soldQty).toFixed(1),
-          item.purchasePrice.toFixed(2),
-          item.salesPrice.toFixed(2),
-          (item.purchasedQty * item.purchasePrice).toFixed(2),
-          (item.soldQty * item.salesPrice).toFixed(2)
-        ])
-      ];
-      fileName = `Patti_Bill_${selectedConsignment?.vehicleNo || 'Manual'}.csv`;
+
     } else {
       // Staff Wise Report
       headers = ['Staff Email', 'Role', 'Invoices Count', 'Revenue (INR)', 'Cost Value (INR)', 'Net Profit (INR)', 'Cash Collected (INR)', 'UPI Collected (INR)', 'Card Collected (INR)'];
@@ -1279,152 +936,7 @@ export const Reports: React.FC = () => {
                   activeReport === 'purchases' ? 'PURCHASE ASSETS REPORT' : 
                   activeReport === 'sales_profit' ? 'SALES & PROFIT REPORT' : 
                   activeReport === 'stock' ? 'STOCK WISE INVENTORY VALUATION' : 
-                  activeReport === 'mark_wise' ? 'MARK WISE SALES & STOCK REPORT' : 
-                  activeReport === 'patti' ? 'PATTI BILL REPORT' : 'STAFF WISE SALES REPORT';
-    
-    if (activeReport === 'patti') {
-      const rent = parseFloat(manualRent) || 0;
-      const loading = parseFloat(manualLoading) || 0;
-      const comm = parseFloat(manualCommission) || 0;
-      const other = parseFloat(manualOther) || 0;
-      const totalExp = rent + loading + comm + other;
-      
-      const salesVal = parseFloat(adjSales) || 0;
-      const purchVal = parseFloat(adjPurchases) || 0;
-      const grandTotal = salesVal - purchVal - totalExp;
-      
-      return (
-        <div className="print-a4" style={{ fontFamily: 'var(--font-body)', background: '#fff', color: '#000', padding: '15mm' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #333', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
-            <div>
-              <h2 style={{ fontSize: '1.4rem', fontWeight: 700, textTransform: 'uppercase' }}>{settings.shopName || 'STORE REPORT'}</h2>
-              <p style={{ fontSize: '0.8rem', margin: '2px 0' }}>{settings.address}</p>
-              <p style={{ fontSize: '0.8rem', margin: '2px 0' }}>Phone: {settings.phone}</p>
-              {settings.gstin && <p style={{ fontSize: '0.8rem', margin: '2px 0', fontWeight: 600 }}>GSTIN: {settings.gstin}</p>}
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'indigo', marginBottom: '4px' }}>PATTI BILL REPORT</h3>
-              <p style={{ fontSize: '0.85rem', margin: '2px 0' }}><strong>Date Generated:</strong> {new Date().toLocaleDateString()}</p>
-            </div>
-          </div>
-
-          <div style={{ background: '#f9fafb', border: '1px solid #ddd', padding: '1rem', borderRadius: '4px', marginBottom: '1.5rem' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>CONSIGNMENT DETAILS</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', fontSize: '0.9rem' }}>
-              <div><strong>Vehicle Number:</strong> {selectedConsignment?.vehicleNo || 'Manual'}</div>
-              <div><strong>Vehicle Mark:</strong> {selectedConsignment?.vehicleMark || 'Manual'}</div>
-              <div><strong>Lot Number:</strong> {selectedConsignment?.lotNo || 'Manual'}</div>
-            </div>
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
-            <thead>
-              <tr style={{ background: '#f3f4f6', borderBottom: '2px solid #333' }}>
-                <th style={{ padding: '8px', textAlign: 'left' }}>Description</th>
-                <th style={{ padding: '8px', textAlign: 'right', width: '150px' }}>Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd' }}>Total Sales Realization</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd', textAlign: 'right', fontWeight: 600 }}>₹{salesVal.toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd' }}>Less: Total Purchase Cost</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd', textAlign: 'right', color: '#dc2626' }}>- ₹{purchVal.toFixed(2)}</td>
-              </tr>
-              <tr style={{ background: '#f9fafb', fontWeight: 600 }}>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd' }}>Gross Realization (Sales - Cost)</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>₹{(salesVal - purchVal).toFixed(2)}</td>
-              </tr>
-              
-              <tr>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd', fontWeight: 600, paddingTop: '1.5rem' }}>EXPENSES / DEDUCTIONS</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd', textAlign: 'right' }}></td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px', paddingLeft: '20px', borderBottom: '1px solid #eee' }}>Rent Expense</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #eee', textAlign: 'right' }}>₹{rent.toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px', paddingLeft: '20px', borderBottom: '1px solid #eee' }}>Loading Expense</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #eee', textAlign: 'right' }}>₹{loading.toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px', paddingLeft: '20px', borderBottom: '1px solid #eee' }}>Commission</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #eee', textAlign: 'right' }}>₹{comm.toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td style={{ padding: '8px', paddingLeft: '20px', borderBottom: '1px solid #ddd' }}>Other Expenses</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd', textAlign: 'right' }}>₹{other.toFixed(2)}</td>
-              </tr>
-              <tr style={{ background: '#f9fafb', fontWeight: 600 }}>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd' }}>Total Expenses Deducted</td>
-                <td style={{ padding: '8px', borderBottom: '1px solid #ddd', textAlign: 'right', color: '#dc2626' }}>- ₹{totalExp.toFixed(2)}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr style={{ background: '#f3f4f6', fontWeight: 800, borderTop: '2px solid #333' }}>
-                <td style={{ padding: '10px', fontSize: '1.1rem' }}>GRAND TOTAL (Net Surplus / Settlement)</td>
-                <td style={{ padding: '10px', textAlign: 'right', fontSize: '1.1rem', color: grandTotal >= 0 ? '#16a34a' : '#dc2626' }}>
-                  ₹{grandTotal.toFixed(2)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-
-          <h4 style={{ margin: '20px 0 8px 0', fontSize: '13px', fontWeight: 700, color: '#1e1b4b', textTransform: 'uppercase' }}>Consignment Items & Sales Realization</h4>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '11px' }}>
-            <thead>
-              <tr style={{ background: '#f3f4f6', borderBottom: '1px solid #d1d5db' }}>
-                <th style={{ padding: '6px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Item / Mark</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Lot No</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Purchase Supplier</th>
-                <th style={{ padding: '6px 8px', textAlign: 'left', border: '1px solid #ddd' }}>Sales Customer</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Purchased Qty</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Sold Qty</th>
-                <th style={{ padding: '6px 8px', textAlign: 'center', border: '1px solid #ddd' }}>Bal Stock</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #ddd' }}>Cost Price</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #ddd' }}>Sale Price</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #ddd' }}>Total Cost</th>
-                <th style={{ padding: '6px 8px', textAlign: 'right', border: '1px solid #ddd' }}>Total Sale</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pattiItems.map((item, idx) => {
-                const balQty = item.purchasedQty - item.soldQty;
-                return (
-                  <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd', fontWeight: 600 }}>{item.name} {item.variationMark ? `(${item.variationMark})` : ''}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>{item.lotNo}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>{item.supplierNames.length > 0 ? item.supplierNames.join(', ') : '-'}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd' }}>{item.customerNames.length > 0 ? item.customerNames.join(', ') : '-'}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{item.purchasedQty} {item.unit}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center' }}>{item.soldQty} {item.unit}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: 600 }}>{balQty} {item.unit}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'right' }}>₹{item.salesPrice.toFixed(2)}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'right' }}>₹{(item.purchasedQty * item.purchasePrice).toFixed(2)}</td>
-                    <td style={{ padding: '6px 8px', border: '1px solid #ddd', textAlign: 'right', fontWeight: 600 }}>₹{(item.soldQty * item.salesPrice).toFixed(2)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          <div style={{ marginTop: '5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-            <div>
-              <p style={{ margin: 0 }}>Customer/Supplier Signature</p>
-              <div style={{ borderTop: '1px solid #aaa', width: '150px', marginTop: '2.5rem' }}></div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ margin: 0 }}>Authorized Signatory</p>
-              <div style={{ borderTop: '1px solid #aaa', width: '150px', marginTop: '2.5rem', marginLeft: 'auto' }}></div>
-            </div>
-          </div>
-        </div>
-      );
-    }
+                  activeReport === 'mark_wise' ? 'MARK WISE SALES & STOCK REPORT' : 'STAFF WISE SALES REPORT';
     
     return (
       <div className="print-a4" style={{ fontFamily: 'var(--font-body)', background: '#fff', color: '#000', padding: '15mm' }}>
@@ -1848,28 +1360,16 @@ export const Reports: React.FC = () => {
           >
             Staff Wise Sales
           </button>
-          <button 
-            className={`btn ${activeReport === 'patti' ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => {
-              setActiveReport('patti');
-              setSelectedConsignment(null);
-            }}
-          >
-            Patti Bill Report
-          </button>
         </div>
       </div>
 
       {/* Date Filters Controller */}
       <div className="glass-panel" style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-        {activeReport === 'stock' || activeReport === 'patti' ? (
+        {activeReport === 'stock' ? (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', color: 'var(--warning)' }}>
             <AlertCircle size={18} />
             <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-              {activeReport === 'stock' 
-                ? 'Stock Wise Report shows real-time warehouse inventory values. Date filters are not applicable.'
-                : 'Patti Bill Report matches purchases and sales for the selected consignment/vehicle. Date filters are not applicable.'
-              }
+              Stock Wise Report shows real-time warehouse inventory values. Date filters are not applicable.
             </span>
           </div>
         ) : (
@@ -1908,7 +1408,7 @@ export const Reports: React.FC = () => {
           </div>
         )}
 
-        {!isPrinting && filterType === 'custom' && activeReport !== 'stock' && activeReport !== 'patti' && (
+        {!isPrinting && filterType === 'custom' && activeReport !== 'stock' && (
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input
               type="date"
@@ -1940,8 +1440,7 @@ export const Reports: React.FC = () => {
         </div>
 
         {/* Additional Filters: Sales Type, Dealer, Product */}
-        {activeReport !== 'patti' && (
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', width: '100%', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', width: '100%', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
           {(activeReport === 'sales' || activeReport === 'sales_profit') && (
             <div className="form-group" style={{ marginBottom: 0, minWidth: '150px' }}>
               <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Sales Type</label>
@@ -2011,8 +1510,7 @@ export const Reports: React.FC = () => {
               </select>
             </div>
           )}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Sales Report Tab */}
@@ -2761,422 +2259,7 @@ export const Reports: React.FC = () => {
           </div>
         </div>
       )}
-      {/* Patti Bill Report Tab */}
-      {activeReport === 'patti' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '1.5rem', alignItems: 'start' }}>
-          {/* Left panel: List of Consignments */}
-          <div className="glass-panel" style={{ padding: '1.25rem' }}>
-            <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', fontWeight: 600 }}>Select Consignment</h3>
-            
-            {/* Sorting controls for consignment list */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem', alignItems: 'center' }}>
-              <select
-                className="form-control"
-                style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', height: '34px', flex: 1 }}
-                value={consignmentSortField}
-                onChange={(e) => handleConsignmentSort(e.target.value)}
-              >
-                <option value="date">Sort by Date</option>
-                <option value="vehicleNo">Sort by Vehicle No</option>
-                <option value="vehicleMark">Sort by Vehicle Mark</option>
-                <option value="lotNo">Sort by Lot No</option>
-                <option value="purchaseTotal">Sort by Purchase Total</option>
-              </select>
-              <button
-                className="btn btn-secondary"
-                style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem', height: '34px', minWidth: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                onClick={() => setConsignmentSortAsc(!consignmentSortAsc)}
-                title={consignmentSortAsc ? "Ascending" : "Descending"}
-              >
-                {consignmentSortAsc ? '▲' : '▼'}
-              </button>
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '60vh', overflowY: 'auto' }}>
-              <button
-                className="btn btn-secondary"
-                style={{ justifyContent: 'flex-start', padding: '0.6rem 0.8rem', textAlign: 'left', width: '100%' }}
-                onClick={() => {
-                  setSelectedConsignment(null);
-                  setAdjPurchases('0');
-                  setAdjSales('0');
-                  setManualRent('0');
-                  setManualLoading('0');
-                  setManualCommission('0');
-                  setManualOther('0');
-                }}
-              >
-                📝 Create Manual Patti Bill
-              </button>
-              
-              <div style={{ borderTop: '1px solid var(--border-color)', margin: '0.5rem 0' }}></div>
-              
-              {sortedConsignments.map((c, i) => {
-                const isSelected = selectedConsignment && 
-                  selectedConsignment.vehicleNo === c.vehicleNo &&
-                  selectedConsignment.vehicleMark === c.vehicleMark &&
-                  selectedConsignment.lotNo === c.lotNo;
-                return (
-                  <div
-                    key={i}
-                    onClick={() => {
-                      setSelectedConsignment(c);
-                      setAdjPurchases(c.purchaseTotal.toString());
-                      setAdjSales(getSalesForConsignment(c.items).toString());
-                      setManualRent('0');
-                      setManualLoading('0');
-                      setManualCommission('0');
-                      setManualOther('0');
-                    }}
-                    style={{
-                      padding: '0.6rem 0.75rem',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      background: isSelected ? 'var(--primary)' : 'var(--bg-input)',
-                      border: '1px solid var(--border-color)',
-                      transition: 'all 0.15s'
-                    }}
-                    className={!isSelected ? 'glass-panel-hover' : ''}
-                  >
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: isSelected ? 'white' : 'var(--text-primary)' }}>
-                      🚚 {c.vehicleNo || 'No Vehicle'}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: isSelected ? 'rgba(255,255,255,0.75)' : 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '0.2rem' }}>
-                      <span>Mark: {c.vehicleMark || '-'}</span>
-                      <span>Lot: {c.lotNo || '-'}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Right panel: Patti Worksheet */}
-          <div className="glass-panel" style={{ padding: '1.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '2rem' }}>
-              
-              {/* Form inputs */}
-              <div>
-                <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', fontWeight: 700, borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
-                  Patti Bill Worksheet
-                </h3>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div className="form-group">
-                    <label>Vehicle Number</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={selectedConsignment ? selectedConsignment.vehicleNo : ''}
-                      disabled={!!selectedConsignment}
-                      placeholder="e.g. KA-12-AB-3456"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Vehicle Mark / Mark</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={selectedConsignment ? selectedConsignment.vehicleMark : ''}
-                      disabled={!!selectedConsignment}
-                      placeholder="e.g. APPLE-A"
-                    />
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label>Associated Lot No.</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={selectedConsignment ? selectedConsignment.lotNo : ''}
-                    disabled={!!selectedConsignment}
-                    placeholder="e.g. LOT-100"
-                  />
-                </div>
-
-                <div style={{ borderTop: '1px solid var(--border-color)', margin: '1rem 0' }}></div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div className="form-group">
-                    <label>Total Purchases Value (Cost) *</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={adjPurchases}
-                      onChange={e => setAdjPurchases(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Total Sales Value (Revenue) *</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={adjSales}
-                      onChange={e => setAdjSales(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px solid var(--border-color)', margin: '1rem 0' }}></div>
-                
-                <h4 style={{ fontSize: '0.9rem', marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>Expenses & Deductions</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div className="form-group">
-                    <label>Rent / Freight (₹)</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={manualRent}
-                      onChange={e => setManualRent(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Loading / Unloading (₹)</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={manualLoading}
-                      onChange={e => setManualLoading(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Commission / Brokerage (₹)</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={manualCommission}
-                      onChange={e => setManualCommission(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Other Expenses (₹)</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={manualOther}
-                      onChange={e => setManualOther(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Dynamic Bill Preview */}
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 600, borderBottom: '1px solid var(--border-color)', paddingBottom: '0.4rem', color: 'var(--primary)' }}>
-                  Patti Bill Preview
-                </h4>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Vehicle No:</span>
-                    <span style={{ fontWeight: 600 }}>{selectedConsignment?.vehicleNo || 'Manual'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Vehicle Mark:</span>
-                    <span style={{ fontWeight: 600 }}>{selectedConsignment?.vehicleMark || 'Manual'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Lot No:</span>
-                    <span style={{ fontWeight: 600 }}>{selectedConsignment?.lotNo || 'Manual'}</span>
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px dashed var(--border-color)', margin: '0.5rem 0' }}></div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.9rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Total Sales (A)</span>
-                    <span style={{ fontWeight: 600 }}>₹{(parseFloat(adjSales) || 0).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--danger)' }}>
-                    <span>Total Purchases (B)</span>
-                    <span style={{ fontWeight: 600 }}>- ₹{(parseFloat(adjPurchases) || 0).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: 'var(--success)' }}>
-                    <span>Gross Realization (A - B)</span>
-                    <span>₹{((parseFloat(adjSales) || 0) - (parseFloat(adjPurchases) || 0)).toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px dashed var(--border-color)', margin: '0.5rem 0' }}></div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Rent:</span>
-                    <span>₹{(parseFloat(manualRent) || 0).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Loading:</span>
-                    <span>₹{(parseFloat(manualLoading) || 0).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Commission:</span>
-                    <span>₹{(parseFloat(manualCommission) || 0).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Other Exp:</span>
-                    <span>₹{(parseFloat(manualOther) || 0).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: 'var(--danger)' }}>
-                    <span>Total Expenses (C)</span>
-                    <span>₹{((parseFloat(manualRent) || 0) + (parseFloat(manualLoading) || 0) + (parseFloat(manualCommission) || 0) + (parseFloat(manualOther) || 0)).toFixed(2)}</span>
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '2px solid var(--border-color)', margin: '0.5rem 0' }}></div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.05rem', fontWeight: 700 }}>
-                  <span>Grand Total (Net)</span>
-                  <span style={{ color: ((parseFloat(adjSales) || 0) - (parseFloat(adjPurchases) || 0) - ((parseFloat(manualRent) || 0) + (parseFloat(manualLoading) || 0) + (parseFloat(manualCommission) || 0) + (parseFloat(manualOther) || 0))) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                    ₹{((parseFloat(adjSales) || 0) - (parseFloat(adjPurchases) || 0) - ((parseFloat(manualRent) || 0) + (parseFloat(manualLoading) || 0) + (parseFloat(manualCommission) || 0) + (parseFloat(manualOther) || 0))).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Item-wise Sales & Balance Stock Details */}
-            {selectedConsignment && (
-              <div style={{ marginTop: '2.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div>
-                    <h4 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--primary)' }}>Item-wise Sales & Balance Stock Details</h4>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.1rem' }}>
-                      Analyze individual product sales, average realizations, and warehouse stock balances for this vehicle.
-                    </p>
-                  </div>
-                  
-                  {/* Search filter input */}
-                  <div style={{ position: 'relative', width: '260px' }}>
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Search items / marks..."
-                      style={{ padding: '0.45rem 0.75rem', fontSize: '0.8rem', height: '34px' }}
-                      value={pattiSearchQuery}
-                      onChange={e => setPattiSearchQuery(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="table-container">
-                  <table className="custom-table" style={{ fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePattiSort('name')}>
-                          Item / Mark {pattiSortKey === 'name' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePattiSort('lotNo')}>
-                          Lot No {pattiSortKey === 'lotNo' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePattiSort('supplierNames')}>
-                          Purchase Supplier {pattiSortKey === 'supplierNames' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handlePattiSort('customerNames')}>
-                          Sales Customer {pattiSortKey === 'customerNames' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', textAlign: 'center', userSelect: 'none' }} onClick={() => handlePattiSort('purchasedQty')}>
-                          Purchased Qty {pattiSortKey === 'purchasedQty' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', textAlign: 'center', userSelect: 'none' }} onClick={() => handlePattiSort('soldQty')}>
-                          Sold Qty {pattiSortKey === 'soldQty' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', textAlign: 'center', userSelect: 'none' }} onClick={() => handlePattiSort('balanceStock')}>
-                          Balance Stock {pattiSortKey === 'balanceStock' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', textAlign: 'right', userSelect: 'none' }} onClick={() => handlePattiSort('purchasePrice')}>
-                          Cost Price {pattiSortKey === 'purchasePrice' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', textAlign: 'right', userSelect: 'none' }} onClick={() => handlePattiSort('salesPrice')}>
-                          Sales Price {pattiSortKey === 'salesPrice' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', textAlign: 'right', userSelect: 'none' }} onClick={() => handlePattiSort('totalPurchase')}>
-                          Total Cost {pattiSortKey === 'totalPurchase' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                        <th style={{ cursor: 'pointer', textAlign: 'right', userSelect: 'none' }} onClick={() => handlePattiSort('totalSales')}>
-                          Total Sales {pattiSortKey === 'totalSales' ? (pattiSortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredSortedPattiItems.map((item, idx) => {
-                        const balanceQty = item.purchasedQty - item.soldQty;
-                        const balanceBags = item.purchasedBags - item.soldBags;
-                        const costVal = item.purchasedQty * item.purchasePrice;
-                        const salesVal = item.soldQty * item.salesPrice;
-
-                        return (
-                          <tr key={idx}>
-                            <td style={{ fontWeight: 600 }}>
-                              {item.name}
-                              {item.variationMark && (
-                                <span style={{ marginLeft: '0.4rem', fontSize: '0.65rem', padding: '0.1rem 0.35rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '3px', fontWeight: 700 }}>
-                                  {item.variationMark}
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              <span style={{ background: 'var(--success-light)', color: 'var(--success)', padding: '0.15rem 0.4rem', borderRadius: '3px', fontSize: '0.75rem', fontWeight: 600 }}>
-                                {item.lotNo}
-                              </span>
-                            </td>
-                            <td>
-                              <div style={{ fontSize: '0.8rem', fontWeight: 500 }}>
-                                {item.supplierNames.length > 0 ? item.supplierNames.join(', ') : '-'}
-                              </div>
-                            </td>
-                            <td>
-                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                {item.customerNames.length > 0 ? item.customerNames.join(', ') : '-'}
-                              </div>
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              {item.purchasedQty.toFixed(1)} {item.unit}
-                              {item.purchasedBags > 0 && (
-                                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                  ({item.purchasedBags} bags)
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'center', color: 'var(--success)' }}>
-                              {item.soldQty.toFixed(1)} {item.unit}
-                              {item.soldBags > 0 && (
-                                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                  ({item.soldBags} bags)
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'center', fontWeight: 700, color: balanceQty > 0 ? 'var(--warning)' : 'var(--text-muted)' }}>
-                              {balanceQty.toFixed(1)} {item.unit}
-                              {balanceBags > 0 && (
-                                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal' }}>
-                                  ({balanceBags} bags)
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'right' }}>₹{item.purchasePrice.toFixed(2)}</td>
-                            <td style={{ textAlign: 'right' }}>₹{item.salesPrice.toFixed(2)}</td>
-                            <td style={{ textAlign: 'right' }}>₹{costVal.toFixed(2)}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>₹{salesVal.toFixed(2)}</td>
-                          </tr>
-                        );
-                      })}
-                      {filteredSortedPattiItems.length === 0 && (
-                        <tr>
-                          <td colSpan={11} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                            No items found matching the filter search.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
       {isPrinting && createPortal(
         <div id="print-area-root">
           {renderPrintableReport()}

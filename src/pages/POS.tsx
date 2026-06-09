@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp, CartItem } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { DB, Product, Sale, ProductVariation, Dealer } from '../utils/db';
@@ -47,7 +47,8 @@ export const POS: React.FC = () => {
     holdCurrentCart,
     recallCart,
     deleteHeldCart,
-    settings
+    settings,
+    purchases
   } = useApp();
 
   // Search & Barcode state
@@ -57,6 +58,82 @@ export const POS: React.FC = () => {
   const [duplicateBarcodeProducts, setDuplicateBarcodeProducts] = useState<Product[]>([]);
   const [variationSelectorProduct, setVariationSelectorProduct] = useState<Product | null>(null);
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const [hideScanBar, setHideScanBar] = useState<boolean>(() => {
+    const val = localStorage.getItem('pos_hide_scan_bar');
+    return val === null ? true : val === 'true';
+  });
+
+  // Flatten products and their variations into individual cards
+  const displayItems = useMemo(() => {
+    const items: Array<{
+      id: string; // unique card id, e.g. "P001" or "P001-V001"
+      product: Product;
+      variation?: ProductVariation;
+      name: string;
+      mark: string;
+      salesPrice: number;
+      currentStock: number;
+      unit: string;
+      lotNo: string;
+    }> = [];
+
+    // Helper to get lot numbers
+    const getLotNo = (productId: string, variationId?: string) => {
+      const matchingPurchases = purchases.filter(p => 
+        p.items.some(item => 
+          item.productId === productId && 
+          (!variationId || item.variationId === variationId)
+        )
+      );
+      const lotNos = Array.from(new Set(matchingPurchases.map(p => p.lotNo).filter(Boolean))) as string[];
+      return lotNos.length > 0 ? lotNos.join(', ') : '-';
+    };
+
+    products.forEach(prod => {
+      if (prod.variations && prod.variations.length > 0) {
+        prod.variations.forEach(v => {
+          items.push({
+            id: `${prod.id}-${v.id}`,
+            product: prod,
+            variation: v,
+            name: prod.name,
+            mark: v.mark,
+            salesPrice: v.salesPrice,
+            currentStock: v.currentStock,
+            unit: v.unit || prod.unit,
+            lotNo: getLotNo(prod.id, v.id)
+          });
+        });
+      } else {
+        items.push({
+          id: prod.id,
+          product: prod,
+          name: prod.name,
+          mark: '-',
+          salesPrice: prod.salesPrice,
+          currentStock: prod.currentStock,
+          unit: prod.unit,
+          lotNo: getLotNo(prod.id)
+        });
+      }
+    });
+
+    return items;
+  }, [products, purchases]);
+
+  // Filter display items based on search query
+  const filteredDisplayItems = useMemo(() => {
+    if (!productSearch.trim()) {
+      return displayItems;
+    }
+    const query = productSearch.toLowerCase().trim();
+    return displayItems.filter(item => 
+      item.name.toLowerCase().includes(query) ||
+      item.product.barcode.includes(query) ||
+      (item.mark && item.mark.toLowerCase().includes(query)) ||
+      (item.lotNo && item.lotNo.toLowerCase().includes(query))
+    );
+  }, [displayItems, productSearch]);
 
   // Modals state
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -87,23 +164,10 @@ export const POS: React.FC = () => {
 
   // Focus barcode input on load
   useEffect(() => {
-    if (barcodeRef.current) {
+    if (!hideScanBar && barcodeRef.current) {
       barcodeRef.current.focus();
     }
-  }, []);
-
-  // Search products handler
-  useEffect(() => {
-    if (productSearch.trim().length > 1) {
-      const results = products.filter(p => 
-        p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-        p.barcode.includes(productSearch)
-      );
-      setSearchResults(results.slice(0, 5));
-    } else {
-      setSearchResults([]);
-    }
-  }, [productSearch, products]);
+  }, [hideScanBar]);
 
   // Click outside listener for customer and phone suggestions dropdowns
   useEffect(() => {
@@ -400,7 +464,32 @@ export const POS: React.FC = () => {
           <h1>POS Billing Screen</h1>
           <p>Quick barcode sales processing, multi-payment checkout, and returns</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.4rem', 
+            fontSize: '0.85rem', 
+            background: 'var(--bg-input)', 
+            padding: '0.5rem 0.75rem', 
+            border: '1px solid var(--border-color)', 
+            borderRadius: 'var(--border-radius-sm)', 
+            cursor: 'pointer',
+            userSelect: 'none',
+            marginRight: '0.5rem'
+          }}>
+            <input 
+              type="checkbox" 
+              checked={hideScanBar} 
+              onChange={(e) => {
+                const val = e.target.checked;
+                setHideScanBar(val);
+                localStorage.setItem('pos_hide_scan_bar', String(val));
+              }}
+              style={{ cursor: 'pointer' }}
+            />
+            <span>Hide Scan Bar</span>
+          </label>
           <button className="btn btn-secondary" onClick={() => setIsHeldModalOpen(true)}>
             <History size={16} />
             <span>Held Bills ({heldCarts.filter(c => c.type === 'retail').length})</span>
@@ -455,23 +544,25 @@ export const POS: React.FC = () => {
         {/* Left Side: Product Search & Scanner */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Barcode Search Form */}
-          <div className="glass-panel" style={{ padding: '1.25rem' }}>
-            <form onSubmit={handleBarcodeSubmit} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <Barcode size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)' }} />
-                <input
-                  ref={barcodeRef}
-                  type="text"
-                  className="form-control"
-                  style={{ paddingLeft: '40px', fontFamily: 'Courier New', fontWeight: 600 }}
-                  placeholder="Scan Barcode or type scanner number..."
-                  value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
-                />
-              </div>
-              <button type="submit" className="btn btn-primary">Add Scan</button>
-            </form>
-          </div>
+          {!hideScanBar && (
+            <div className="glass-panel" style={{ padding: '1.25rem' }}>
+              <form onSubmit={handleBarcodeSubmit} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Barcode size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)' }} />
+                  <input
+                    ref={barcodeRef}
+                    type="text"
+                    className="form-control"
+                    style={{ paddingLeft: '40px', fontFamily: 'Courier New', fontWeight: 600 }}
+                    placeholder="Scan Barcode or type scanner number..."
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary">Add Scan</button>
+              </form>
+            </div>
+          )}
 
           {/* Fuzzy Search Section */}
           <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -482,89 +573,125 @@ export const POS: React.FC = () => {
                 type="text"
                 className="form-control"
                 style={{ paddingLeft: '40px' }}
-                placeholder="Search products by name..."
+                placeholder="Search products by name, mark, or lot number..."
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
               />
             </div>
 
-            {/* Results Grid */}
-            {searchResults.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                {searchResults.map((prod) => (
-                  <div 
-                    key={prod.id} 
-                    className="glass-panel-hover"
-                    onClick={() => {
-                      if (prod.variations && prod.variations.length > 0) {
-                        setVariationSelectorProduct(prod);
-                      } else {
-                        addToRetailCart(prod, 1);
-                      }
-                      setProductSearch('');
-                    }}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '0.75rem',
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: 'var(--border-radius-sm)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <div>
-                      <h4 style={{ fontSize: '0.85rem', fontWeight: 600 }}>{prod.name}</h4>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Barcode: {prod.barcode} | Unit: {prod.unit}</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>₹{prod.salesPrice}</span>
-                      <span className={`badge ${prod.currentStock <= prod.minStockAlert ? 'badge-danger' : 'badge-success'}`}>
-                        Stock: {Number(prod.currentStock.toFixed(3))}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : productSearch.trim().length > 1 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                No matches found.
-              </div>
-            ) : null}
+            {/* Products Grid */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <h4 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {productSearch.trim() ? `SEARCH RESULTS (${filteredDisplayItems.length})` : 'ALL PRODUCTS & BATCH MARKS'}
+              </h4>
+              
+              {filteredDisplayItems.length > 0 ? (
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', 
+                  gap: '0.75rem',
+                  maxHeight: '480px',
+                  overflowY: 'auto',
+                  paddingRight: '0.25rem'
+                }}>
+                  {filteredDisplayItems.map((item) => {
+                    const isLowStock = item.currentStock <= item.product.minStockAlert;
+                    return (
+                      <div
+                        key={item.id}
+                        className="glass-panel glass-panel-hover"
+                        onClick={() => addToRetailCart(item.product, 1, item.variation)}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          padding: '0.85rem',
+                          borderRadius: 'var(--border-radius-md)',
+                          cursor: 'pointer',
+                          background: 'var(--bg-card)',
+                          minHeight: '135px',
+                          border: '1px solid var(--border-color)',
+                          transition: 'all var(--transition-fast)'
+                        }}
+                      >
+                        <div>
+                          {/* Product Name */}
+                          <h4 style={{ 
+                            fontSize: '0.85rem', 
+                            fontWeight: 600, 
+                            marginBottom: '0.4rem', 
+                            color: 'var(--text-primary)',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            lineHeight: '1.2'
+                          }} title={item.name}>
+                            {item.name}
+                          </h4>
+                          
+                          {/* Mark & Lot Badge row */}
+                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                            {item.variation && (
+                              <span style={{ 
+                                fontSize: '0.65rem', 
+                                padding: '0.1rem 0.35rem', 
+                                background: 'var(--primary-light)', 
+                                color: 'var(--primary)', 
+                                borderRadius: '4px', 
+                                fontWeight: 700 
+                              }}>
+                                Mark: {item.mark}
+                              </span>
+                            )}
+                            <span style={{ 
+                              fontSize: '0.65rem', 
+                              padding: '0.1rem 0.35rem', 
+                              background: 'rgba(255,255,255,0.06)', 
+                              color: 'var(--text-secondary)', 
+                              borderRadius: '4px', 
+                              fontWeight: 500 
+                            }}>
+                              Lot: {item.lotNo}
+                            </span>
+                          </div>
+                        </div>
 
-            {/* Quick-select common items list */}
-            <div>
-              <h4 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem', fontWeight: 600 }}>POPULAR PRODUCTS</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.5rem' }}>
-                {products.slice(0, 6).map(prod => (
-                  <button
-                    key={prod.id}
-                    className="btn btn-secondary glass-panel-hover"
-                    onClick={() => {
-                      if (prod.variations && prod.variations.length > 0) {
-                        setVariationSelectorProduct(prod);
-                      } else {
-                        addToRetailCart(prod, 1);
-                      }
-                    }}
-                    style={{ 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      gap: '0.25rem',
-                      padding: '0.6rem 0.4rem', 
-                      borderRadius: 'var(--border-radius-md)',
-                      fontSize: '0.75rem',
-                      height: '75px',
-                      justifyContent: 'center',
-                      textAlign: 'center'
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', width: '100%' }}>{prod.name}</span>
-                    <span style={{ color: 'var(--primary)', fontWeight: 700 }}>₹{prod.salesPrice} / {prod.unit}</span>
-                  </button>
-                ))}
-              </div>
+                        <div>
+                          {/* Stock & Unit */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Stock:</span>
+                            <span className={`badge ${isLowStock ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>
+                              {Number(item.currentStock.toFixed(3))} {item.unit}
+                            </span>
+                          </div>
+
+                          {/* Price */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>
+                              ₹{item.salesPrice.toFixed(2)}
+                            </span>
+                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                              per {item.unit}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '2rem 1rem', 
+                  color: 'var(--text-muted)', 
+                  border: '1px dashed var(--border-color)', 
+                  borderRadius: 'var(--border-radius-sm)',
+                  fontSize: '0.85rem'
+                }}>
+                  No products or marks match your search query.
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -209,6 +209,7 @@ export const ProfitAdder: React.FC = () => {
 
     const catalog = DB.getProducts();
     let updatedCount = 0;
+    const modifiedProdIds = new Set<string>();
 
     // Loop selected keys and apply math
     selectedKeys.forEach(key => {
@@ -219,6 +220,7 @@ export const ProfitAdder: React.FC = () => {
       const prodIdx = catalog.findIndex(p => p.id === prodId);
       if (prodIdx >= 0) {
         const prod = catalog[prodIdx];
+        modifiedProdIds.add(prodId);
 
         if (!varId) {
           // Update root product prices
@@ -261,9 +263,22 @@ export const ProfitAdder: React.FC = () => {
             updatedCount++;
           }
         }
-        DB.saveProduct(prod);
       }
     });
+
+    // Post-process: sync parent prices with first variation for any modified products with variations
+    modifiedProdIds.forEach(prodId => {
+      const prod = catalog.find(p => p.id === prodId);
+      if (prod && prod.variations && prod.variations.length > 0) {
+        prod.purchasePrice = prod.variations[0].purchasePrice;
+        prod.salesPrice = prod.variations[0].salesPrice;
+      }
+    });
+
+    // Save optimized to localStorage & Firebase
+    if (updatedCount > 0) {
+      DB.setJSON('billing_products', catalog);
+    }
 
     refreshData();
     setSelectedKeys([]);
