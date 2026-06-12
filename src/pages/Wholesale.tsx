@@ -249,11 +249,6 @@ export const Wholesale: React.FC = () => {
 
     DB.saveSale(saleData);
     
-    // If credit, DB.saveSale automatically handles dealer outstanding additions if paymentMethod is Mixed and paid amounts are 0.
-    // However, let's make sure it is updated cleanly.
-    if (isCreditSale) {
-      DB.updateDealerOutstanding(selectedDealerId, cartTotal);
-    }
 
     refreshData();
     clearWholesaleCart();

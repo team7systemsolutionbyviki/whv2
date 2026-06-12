@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
-import { DB, Sale, Purchase, PattiRecord } from '../utils/db';
+import { DB, Sale, Purchase, PattiRecord, Expense } from '../utils/db';
 import { 
   BarChart3, 
   Download, 
@@ -14,12 +14,13 @@ import {
   AlertCircle,
   ClipboardList,
   ArrowUpDown,
-  Trash2
+  Trash2,
+  Receipt
 } from 'lucide-react';
 
 export const Reports: React.FC = () => {
-  const { sales, purchases, products, settings, dealers, suppliers, pattis } = useApp();
-  const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'stock' | 'mark_wise' | 'staff_wise' | 'patti'>('sales');
+  const { sales, purchases, products, settings, dealers, suppliers, pattis, expenses } = useApp();
+  const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'expenses' | 'stock' | 'mark_wise' | 'staff_wise' | 'patti'>('sales');
 
   // General Report Sorting States
   const [salesSortField, setSalesSortField] = useState<string>('date');
@@ -47,6 +48,9 @@ export const Reports: React.FC = () => {
   const [pattiNameFilter, setPattiNameFilter] = useState<string>('');
   const [pattiVehicleFilter, setPattiVehicleFilter] = useState<string>('');
   const [pattiMarkFilter, setPattiMarkFilter] = useState<string>('');
+
+  const [expensesSortField, setExpensesSortField] = useState<'date' | 'category' | 'amount'>('date');
+  const [expensesSortAsc, setExpensesSortAsc] = useState<boolean>(false);
 
 
 
@@ -192,6 +196,24 @@ export const Reports: React.FC = () => {
   const totalBagsSold = filteredSales.reduce((sum, s) => sum + s.items.reduce((acc, item) => acc + (item.bags || 0), 0), 0);
 
   const profitMarginPercent = totalSalesRevenue > 0 ? (netProfit / totalSalesRevenue) * 100 : 0;
+
+  const periodExpenses = expenses
+    .filter(e => filterDateMatch(e.date))
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const netOperatingProfit = netProfit - periodExpenses;
+  const operatingProfitMarginPercent = totalSalesRevenue > 0 ? (netOperatingProfit / totalSalesRevenue) * 100 : 0;
+
+  // Compute top expense category for report range
+  const reportCategorySummary = expenses
+    .filter(e => filterDateMatch(e.date))
+    .reduce((acc, e) => {
+      acc[e.category] = (acc[e.category] || 0) + e.amount;
+      return acc;
+    }, {} as { [key: string]: number });
+
+  const reportTopCategoryEntry = Object.entries(reportCategorySummary).sort((a, b) => b[1] - a[1])[0];
+  const reportTopCategory = reportTopCategoryEntry ? `${reportTopCategoryEntry[0]} (₹${reportTopCategoryEntry[1].toFixed(2)})` : 'None';
 
   // Calculations for Purchases Report Summaries
   const totalPurchaseCount = filteredPurchases.length;
@@ -851,6 +873,37 @@ export const Reports: React.FC = () => {
     }, { items: 0, exp: 0, grand: 0, qty: 0, weight: 0 });
   }, [sortedPattis]);
 
+  const sortedFilteredExpenses = React.useMemo(() => {
+    let list = expenses.filter(e => filterDateMatch(e.date));
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+      if (expensesSortField === 'date') {
+        valA = new Date(a.date).getTime();
+        valB = new Date(b.date).getTime();
+      } else if (expensesSortField === 'category') {
+        valA = a.category.toLowerCase();
+        valB = b.category.toLowerCase();
+      } else if (expensesSortField === 'amount') {
+        valA = a.amount;
+        valB = b.amount;
+      }
+      if (valA < valB) return expensesSortAsc ? -1 : 1;
+      if (valA > valB) return expensesSortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [expenses, expensesSortField, expensesSortAsc, filterType, startDate, endDate]);
+
+  const handleExpensesSort = (field: 'date' | 'category' | 'amount') => {
+    if (expensesSortField === field) {
+      setExpensesSortAsc(!expensesSortAsc);
+    } else {
+      setExpensesSortField(field);
+      setExpensesSortAsc(true);
+    }
+  };
+
 
 
   // CSV Exporter helper
@@ -989,6 +1042,18 @@ export const Reports: React.FC = () => {
         ];
       });
       fileName = `Patti_Report_${new Date().toISOString().slice(0,10)}.csv`;
+    } else if (activeReport === 'expenses') {
+      headers = ['Date & Time', 'Category', 'Note/Description', 'Payment Method', 'Reference No', 'Amount (INR)', 'Recorded By'];
+      rows = sortedFilteredExpenses.map(e => [
+        new Date(e.date).toLocaleString(),
+        e.category,
+        e.note || '-',
+        e.paymentMethod,
+        e.referenceNo || '-',
+        e.amount.toFixed(2),
+        e.createdBy || '-'
+      ]);
+      fileName = `Expenses_Report_${filterType}.csv`;
     } else {
       // Staff Wise Report
       headers = ['Staff Email', 'Role', 'Invoices Count', 'Revenue (INR)', 'Cost Value (INR)', 'Net Profit (INR)', 'Cash Collected (INR)', 'UPI Collected (INR)', 'Card Collected (INR)'];
@@ -1028,8 +1093,10 @@ export const Reports: React.FC = () => {
     const title = activeReport === 'sales' ? 'SALES LEDGER REPORT' : 
                   activeReport === 'purchases' ? 'PURCHASE ASSETS REPORT' : 
                   activeReport === 'sales_profit' ? 'SALES & PROFIT REPORT' : 
+                  activeReport === 'expenses' ? 'EXPENSES OUTFLOW REPORT' :
                   activeReport === 'stock' ? 'STOCK WISE INVENTORY VALUATION' : 
-                  activeReport === 'mark_wise' ? 'MARK WISE SALES & STOCK REPORT' : 'STAFF WISE SALES REPORT';
+                  activeReport === 'mark_wise' ? 'MARK WISE SALES & STOCK REPORT' : 
+                  activeReport === 'patti' ? 'PATTI BILLS REPORT' : 'STAFF WISE SALES REPORT';
     
     return (
       <div className="print-a4" style={{ fontFamily: 'var(--font-body)', background: '#fff', color: '#000', padding: '15mm' }}>
@@ -1072,13 +1139,44 @@ export const Reports: React.FC = () => {
                 <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Discounts</span>
                 <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>₹{filteredSales.reduce((sum, s) => sum + s.discount, 0).toFixed(2)}</div>
               </div>
-              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
-                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Net Profit</span>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'green' }}>₹{netProfit.toFixed(2)}</div>
+              {activeReport === 'sales_profit' ? (
+                <>
+                  <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Gross Profit</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'green' }}>₹{netProfit.toFixed(2)}</div>
+                  </div>
+                  <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>General Expenses</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'red' }}>₹{periodExpenses.toFixed(2)}</div>
+                  </div>
+                  <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Net Profit</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'green' }}>₹{netOperatingProfit.toFixed(2)}</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Net Profit</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'green' }}>₹{netProfit.toFixed(2)}</div>
+                  </div>
+                  <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Total Bags Sold</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{totalBagsSold} Bags</div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+          {activeReport === 'expenses' && (
+            <>
+              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb', gridColumn: 'span 2' }}>
+                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Total Expenses Count</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{sortedFilteredExpenses.length} Outflows</div>
               </div>
-              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
-                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Total Bags Sold</span>
-                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{totalBagsSold} Bags</div>
+              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb', gridColumn: 'span 3' }}>
+                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Total Expenses Value</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'red' }}>₹{periodExpenses.toFixed(2)}</div>
               </div>
             </>
           )}
@@ -1240,6 +1338,17 @@ export const Reports: React.FC = () => {
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Card</th>
                 </>
               )}
+              {activeReport === 'expenses' && (
+                <>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Date</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Category</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Note/Description</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Payment Method</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Reference ID</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Amount</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Recorded By</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -1398,6 +1507,17 @@ export const Reports: React.FC = () => {
                 <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{stat.cardCollected.toFixed(2)}</td>
               </tr>
             ))}
+            {activeReport === 'expenses' && sortedFilteredExpenses.map((exp) => (
+              <tr key={exp.id}>
+                <td style={{ border: '1px solid #ddd', padding: '6px' }}>{new Date(exp.date).toLocaleDateString()} {new Date(exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>{exp.category}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px' }}>{exp.note || '-'}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px' }}>{exp.paymentMethod}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px' }}>{exp.referenceNo || '-'}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right', fontWeight: 700, color: 'red' }}>₹{exp.amount.toFixed(2)}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px' }}>{(exp.createdBy || '').split('@')[0]}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
@@ -1434,6 +1554,12 @@ export const Reports: React.FC = () => {
             onClick={() => setActiveReport('sales_profit')}
           >
             Sales & Profit
+          </button>
+          <button 
+            className={`btn ${activeReport === 'expenses' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveReport('expenses')}
+          >
+            Expenses Outflow
           </button>
           <button 
             className={`btn ${activeReport === 'stock' ? 'btn-primary' : 'btn-secondary'}`}
@@ -2053,22 +2179,23 @@ export const Reports: React.FC = () => {
               <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>₹{totalSalesRevenue.toFixed(2)}</h3>
             </div>
             <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--info)' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Cost Value of Goods</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Cost of Goods Sold</span>
               <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>₹{totalSalesCost.toFixed(2)}</h3>
             </div>
             <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--success)' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Net Profit Yield</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Gross Sales Profit</span>
               <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--success)' }}>₹{netProfit.toFixed(2)}</h3>
             </div>
-            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Net Profit Margin</span>
-              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--warning)' }}>
-                {profitMarginPercent.toFixed(1)}%
-              </h3>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--danger)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>General Expenses</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--danger)' }}>₹{periodExpenses.toFixed(2)}</h3>
             </div>
-            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--primary)' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Bags Sold</span>
-              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--primary)' }}>{totalBagsSold} Bags</h3>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--success)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Net Operating Profit</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--success)', textShadow: '0 0 10px rgba(16,185,129,0.2)' }}>
+                ₹{netOperatingProfit.toFixed(2)}
+              </h3>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Margin: {operatingProfitMarginPercent.toFixed(1)}%</span>
             </div>
           </div>
 
@@ -2425,6 +2552,99 @@ export const Reports: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expenses Report Tab */}
+      {activeReport === 'expenses' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Summary Cards */}
+          <div className="dashboard-grid">
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--primary)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Period Expenses</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--danger)' }}>
+                ₹{periodExpenses.toFixed(2)}
+              </h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--info)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Transactions Logged</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
+                {sortedFilteredExpenses.length} Outflows
+              </h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Top Expense Category</span>
+              <h3 style={{ fontSize: '1.15rem', marginTop: '0.25rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={reportTopCategory}>
+                {reportTopCategory}
+              </h3>
+            </div>
+          </div>
+
+          {/* Details Table */}
+          <div className="glass-panel" style={{ padding: '1rem' }}>
+            <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', fontWeight: 600 }}>Period Expenses Details</h3>
+            {sortedFilteredExpenses.length > 0 ? (
+              <div className="table-container">
+                <table className="custom-table" style={{ fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleExpensesSort('date')}>
+                        Date & Time {expensesSortField === 'date' ? (expensesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleExpensesSort('category')}>
+                        Category {expensesSortField === 'category' ? (expensesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th>Note / Description</th>
+                      <th>Payment Method</th>
+                      <th>Reference ID</th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleExpensesSort('amount')}>
+                        Amount {expensesSortField === 'amount' ? (expensesSortAsc ? ' ▲' : ' ▼') : ''}
+                      </th>
+                      <th>Recorded By</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedFilteredExpenses.map((exp) => (
+                      <tr key={exp.id}>
+                        <td>{new Date(exp.date).toLocaleString()}</td>
+                        <td>
+                          <span className="badge badge-info" style={{ fontWeight: 600 }}>
+                            {exp.category}
+                          </span>
+                        </td>
+                        <td>{exp.note || <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>-</span>}</td>
+                        <td>
+                          <span className={`badge ${
+                            exp.paymentMethod === 'Cash' ? 'badge-success' :
+                            exp.paymentMethod === 'UPI' ? 'badge-info' :
+                            exp.paymentMethod === 'Card' ? 'badge-warning' : 'badge-danger'
+                          }`}>
+                            {exp.paymentMethod}
+                          </span>
+                        </td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{exp.referenceNo || '-'}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>
+                          ₹{exp.amount.toFixed(2)}
+                        </td>
+                        <td>{(exp.createdBy || '').split('@')[0]}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'var(--bg-sidebar)', fontWeight: 700, fontSize: '0.85rem' }}>
+                      <td colSpan={5} style={{ padding: '0.5rem' }}>Total Period General Expenses</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right', color: 'var(--danger)' }}>₹{periodExpenses.toFixed(2)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
+                No expenses logged for the selected period.
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -613,9 +613,6 @@ const PattiPrintView: React.FC<{
         {shopAddress && <div style={{ fontSize: '11px', color: '#333' }}>{shopAddress}</div>}
         {shopPhone && <div style={{ fontSize: '11px' }}>Ph: {shopPhone}</div>}
       </div>
-      <div style={{ textAlign: 'center', fontSize: '16px', fontWeight: 'bold', marginBottom: '8px', textDecoration: 'underline', letterSpacing: '0.1em' }}>
-        PATTI — CONSIGNMENT BILL
-      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '10px', fontSize: '11.5px' }}>
         <div><strong>Bill No:</strong> {patti.billNo}</div>
         <div style={{ textAlign: 'right' }}><strong>Date:</strong> {new Date(patti.date).toLocaleDateString('en-IN')}</div>
@@ -781,9 +778,6 @@ function buildPrintHtml(
     <div style="font-size:18px;font-weight:bold">${settings.shopName || 'SUPER MART'}</div>
     ${settings.address ? `<div style="font-size:11px;color:#333">${settings.address}</div>` : ''}
     ${settings.phone ? `<div style="font-size:11px">Ph: ${settings.phone}</div>` : ''}
-  </div>
-  <div style="text-align:center;font-size:16px;font-weight:bold;margin-bottom:8px;text-decoration:underline;letter-spacing:0.1em">
-    PATTI &mdash; CONSIGNMENT BILL
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:10px;font-size:11.5px">
     <div><strong>Bill No:</strong> ${patti.billNo}</div>

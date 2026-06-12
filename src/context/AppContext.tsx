@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransaction, SaleItem, ProductVariation, SupplierPayment, DealerPayment, PattiRecord } from '../utils/db';
+import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransaction, SaleItem, ProductVariation, SupplierPayment, DealerPayment, PattiRecord, Expense } from '../utils/db';
 import { rtdb, isMockMode } from '../utils/firebase';
 import { ref, onValue } from 'firebase/database';
 
-export type ActiveTab = 'dashboard' | 'products' | 'pos' | 'wholesale' | 'purchases' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers' | 'patti';
+export type ActiveTab = 'dashboard' | 'products' | 'pos' | 'wholesale' | 'purchases' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers' | 'patti' | 'expenses';
 
 export interface CartItem {
   product: Product;
@@ -48,6 +48,7 @@ interface AppContextType {
   stockHistory: StockTransaction[];
   settings: Settings;
   pattis: PattiRecord[];
+  expenses: Expense[];
   refreshData: () => void;
   
   // POS Carts
@@ -112,6 +113,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [stockHistory, setStockHistory] = useState<StockTransaction[]>([]);
   const [settings, setSettings] = useState<Settings>({} as Settings);
   const [pattis, setPattis] = useState<PattiRecord[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   // Cart & Customers
   const [retailCart, setRetailCart] = useState<CartItem[]>([]);
@@ -148,6 +150,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { key: 'billing_supplier_payments', path: 'supplier_payments', defaultValue: [] },
         { key: 'login_history', path: 'login_history', defaultValue: [] },
         { key: 'app_users', path: 'app_users', defaultValue: [] },
+        { key: 'billing_expenses', path: 'expenses', defaultValue: [] },
       ];
 
       keysToListen.forEach(({ key, path, defaultValue }) => {
@@ -280,6 +283,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStockHistory(DB.getStockHistory());
     setSettings(DB.getSettings());
     setPattis(DB.getPattis());
+    setExpenses(DB.getExpenses());
   };
 
   const setDarkMode = (dark: boolean) => {
@@ -791,7 +795,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         toasts,
         showToast,
-        removeToast
+        removeToast,
+        expenses
       }}
     >
       {children}

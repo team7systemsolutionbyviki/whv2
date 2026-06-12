@@ -8,13 +8,14 @@ import {
   AlertTriangle, 
   FileText, 
   ChevronRight,
-  Printer
+  Printer,
+  Receipt
 } from 'lucide-react';
 import { PrintPreviewModal } from '../components/PrintPreviewModal';
 import { Sale } from '../utils/db';
 
 export const Dashboard: React.FC = () => {
-  const { sales, purchases, products, activeTab, setActiveTab } = useApp();
+  const { sales, purchases, products, activeTab, setActiveTab, expenses } = useApp();
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
 
   // Helper to check if date is today (2026-06-03 or standard local day)
@@ -40,6 +41,12 @@ export const Dashboard: React.FC = () => {
   const todayProfit = sales
     .filter(s => s.status === 'completed' && isToday(s.date))
     .reduce((sum, s) => sum + s.profit, 0);
+
+  const todayExpenses = expenses
+    .filter(e => isToday(e.date))
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const todayNetProfit = todayProfit - todayExpenses;
 
   const totalProducts = products.length;
 
@@ -112,13 +119,23 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
+        <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.25rem', borderLeft: '4px solid var(--danger)', cursor: 'pointer' }} onClick={() => setActiveTab('expenses')} title="Click to view Expenses">
+          <div style={{ padding: '0.75rem', borderRadius: '10px', background: 'var(--danger-light)', color: 'var(--danger)' }}>
+            <Receipt size={24} />
+          </div>
+          <div>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Today's Expenses</span>
+            <h3 style={{ fontSize: '1.6rem', fontWeight: 700, marginTop: '0.2rem', color: 'var(--danger)' }}>₹{todayExpenses.toFixed(2)}</h3>
+          </div>
+        </div>
+
         <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1.25rem', borderLeft: '4px solid var(--success)' }}>
           <div style={{ padding: '0.75rem', borderRadius: '10px', background: 'var(--success-light)', color: 'var(--success)' }}>
             <DollarSign size={24} />
           </div>
           <div>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Today's Profit</span>
-            <h3 style={{ fontSize: '1.6rem', fontWeight: 700, marginTop: '0.2rem', color: 'var(--success)' }}>₹{todayProfit.toFixed(2)}</h3>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Today's Net Profit</span>
+            <h3 style={{ fontSize: '1.6rem', fontWeight: 700, marginTop: '0.2rem', color: 'var(--success)' }}>₹{todayNetProfit.toFixed(2)}</h3>
           </div>
         </div>
 

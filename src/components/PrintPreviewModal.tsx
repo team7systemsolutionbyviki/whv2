@@ -59,6 +59,9 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
   // Balance due = dealer's current outstanding (already updated after this sale)
   const balanceDue = dealerForSale ? dealerForSale.outstanding : 0;
 
+  const receivedAmount = (sale.paymentDetails?.cashAmount || 0) + (sale.paymentDetails?.upiAmount || 0) + (sale.paymentDetails?.cardAmount || 0);
+  const billBalance = Math.max(0, sale.total - receivedAmount);
+
   const calculateTotalWeight = () => {
     return sale.items.reduce((sum, item) => sum + (item.weight || 0), 0);
   };
@@ -139,6 +142,18 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 'bold', background: '#f3f4f6' }}>
+                <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'center' }}></td>
+                <td style={{ padding: '8px', border: '1px solid #d1d5db' }}>Total</td>
+                <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'center' }}>{calculateTotalBags()}</td>
+                <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'center' }}>
+                  {settings.showTotalWeightReceipt !== false ? `${Number(calculateTotalWeight().toFixed(3))} Kg` : ''}
+                </td>
+                <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'right' }}></td>
+                <td style={{ padding: '8px', border: '1px solid #d1d5db', textAlign: 'right' }}>{sale.subtotal.toFixed(2)}</td>
+              </tr>
+            </tfoot>
           </table>
 
           {/* Bottom section */}
@@ -149,18 +164,20 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 <h4 style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.25rem' }}>Terms & Conditions:</h4>
                 <p style={{ fontSize: '0.75rem', color: '#4b5563', whiteSpace: 'pre-line' }}>{settings.terms}</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                {/* QR Code representation */}
-                <div style={{ border: '1px solid #ccc', padding: '6px', borderRadius: '4px', width: '80px', height: '80px', display: 'flex', alignItems: 'center', justifySelf: 'center', flexDirection: 'column', justifyContent: 'center' }}>
-                  <div style={{ width: '68px', height: '68px', background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 8px 8px', border: '2px solid black' }}></div>
+              {settings.showQrPaymentReceipt !== false && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  {/* QR Code representation */}
+                  <div style={{ border: '1px solid #ccc', padding: '6px', borderRadius: '4px', width: '80px', height: '80px', display: 'flex', alignItems: 'center', justifySelf: 'center', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div style={{ width: '68px', height: '68px', background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 8px 8px', border: '2px solid black' }}></div>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', fontWeight: 600 }}>Scan QR to Pay / Verify</p>
+                    <p style={{ fontSize: '0.7rem', color: '#6b7280' }}>UPI Supported Apps</p>
+                    {settings.upiId && <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.7rem' }}><strong>UPI ID:</strong> {settings.upiId}</p>}
+                    {settings.bankName && <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.7rem' }}><strong>Bank:</strong> {settings.bankName} &bull; A/C: {settings.bankAccNo} &bull; IFSC: {settings.bankIFSC}</p>}
+                  </div>
                 </div>
-                <div>
-                  <p style={{ fontSize: '0.75rem', fontWeight: 600 }}>Scan QR to Pay / Verify</p>
-                  <p style={{ fontSize: '0.7rem', color: '#6b7280' }}>UPI Supported Apps</p>
-                  {settings.upiId && <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.7rem' }}><strong>UPI ID:</strong> {settings.upiId}</p>}
-                  {settings.bankName && <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.7rem' }}><strong>Bank:</strong> {settings.bankName} &bull; A/C: {settings.bankAccNo} &bull; IFSC: {settings.bankIFSC}</p>}
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Calculations & Sign */}
@@ -174,17 +191,19 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                   <span>Total Bags:</span>
                   <span>{calculateTotalBags()}</span>
                 </div>
-                <div className="print-flex-between">
-                  <span>Total Weight:</span>
-                  <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
-                </div>
+                {settings.showTotalWeightReceipt !== false && (
+                  <div className="print-flex-between">
+                    <span>Total Weight:</span>
+                    <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
+                  </div>
+                )}
                 {sale.discount > 0 && (
                   <div className="print-flex-between" style={{ color: 'red' }}>
                     <span>Discount:</span>
                     <span>- ₹{sale.discount.toFixed(2)}</span>
                   </div>
                 )}
-                {settings.gstin && (
+                {settings.showGstReceipt !== false && settings.gstin && (
                   <>
                     <div className="print-flex-between">
                       <span>CGST ({settings.taxRate / 2}%):</span>
@@ -200,9 +219,17 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                   <span>Grand Total:</span>
                   <span>₹{sale.total.toFixed(2)}</span>
                 </div>
-                {balanceDue > 0 && (
+                <div className="print-flex-between" style={{ fontWeight: 600 }}>
+                  <span>Received Amount:</span>
+                  <span>₹{receivedAmount.toFixed(2)}</span>
+                </div>
+                <div className="print-flex-between" style={{ fontWeight: 600 }}>
+                  <span>Bill Balance:</span>
+                  <span>₹{billBalance.toFixed(2)}</span>
+                </div>
+                {dealerForSale && (
                   <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 700, borderTop: '1px dashed #dc2626', paddingTop: '0.35rem', marginTop: '0.1rem' }}>
-                    <span>⚠ Balance Due (Outstanding):</span>
+                    <span>⚠ Current Balance (Outstanding):</span>
                     <span>₹{balanceDue.toFixed(2)}</span>
                   </div>
                 )}
@@ -262,6 +289,16 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 'bold', borderTop: '1px dashed black' }}>
+                <td style={{ textAlign: 'left', paddingTop: '4px' }}>Total</td>
+                <td style={{ textAlign: 'center', paddingTop: '4px' }}>{calculateTotalBags()}</td>
+                <td style={{ textAlign: 'center', paddingTop: '4px' }}>
+                  {settings.showTotalWeightReceipt !== false ? `${Number(calculateTotalWeight().toFixed(3))} Kg` : ''}
+                </td>
+                <td style={{ textAlign: 'right', paddingTop: '4px' }}>{sale.subtotal.toFixed(2)}</td>
+              </tr>
+            </tfoot>
           </table>
 
           <div className="print-divider"></div>
@@ -275,17 +312,19 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <span>Total Bags:</span>
               <span>{calculateTotalBags()}</span>
             </div>
-            <div className="print-flex-between">
-              <span>Total Weight:</span>
-              <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
-            </div>
+            {settings.showTotalWeightReceipt !== false && (
+              <div className="print-flex-between">
+                <span>Total Weight:</span>
+                <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
+              </div>
+            )}
             {sale.discount > 0 && (
               <div className="print-flex-between">
                 <span>Discount:</span>
                 <span>-₹{sale.discount.toFixed(2)}</span>
               </div>
             )}
-            {settings.gstin && (
+            {settings.showGstReceipt !== false && settings.gstin && (
               <div className="print-flex-between">
                 <span>GST Tax ({settings.taxRate}%):</span>
                 <span>₹{taxDetails.tax}</span>
@@ -295,9 +334,17 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <span>GRAND TOTAL:</span>
               <span>₹{sale.total.toFixed(2)}</span>
             </div>
-            {balanceDue > 0 && (
+            <div className="print-flex-between">
+              <span>RECEIVED AMT:</span>
+              <span>₹{receivedAmount.toFixed(2)}</span>
+            </div>
+            <div className="print-flex-between">
+              <span>BILL BALANCE:</span>
+              <span>₹{billBalance.toFixed(2)}</span>
+            </div>
+            {dealerForSale && (
               <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 'bold', borderTop: '1px dashed #dc2626', paddingTop: '3px', marginTop: '1px' }}>
-                <span>BALANCE DUE:</span>
+                <span>CURRENT BALANCE:</span>
                 <span>₹{balanceDue.toFixed(2)}</span>
               </div>
             )}
@@ -312,10 +359,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <div style={{ fontSize: '8px' }}>*{sale.invoiceNo}*</div>
             
             {/* Simulated UPI QR */}
-            <div style={{ width: '48px', height: '48px', border: '1px solid black', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 6px 6px' }}></div>
-            <div style={{ fontSize: '7px', fontWeight: 'bold' }}>SCAN TO PAY</div>
-            {settings.upiId && <div style={{ fontSize: '7px', marginTop: '1px' }}>UPI: {settings.upiId}</div>}
-            {settings.bankName && <div style={{ fontSize: '6.5px', marginTop: '1.5px', lineHeight: '8px' }}>BANK: {settings.bankName}<br/>A/C: {settings.bankAccNo}<br/>IFSC: {settings.bankIFSC}</div>}
+            {settings.showQrPaymentReceipt !== false && (
+              <>
+                <div style={{ width: '48px', height: '48px', border: '1px solid black', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 6px 6px' }}></div>
+                <div style={{ fontSize: '7px', fontWeight: 'bold' }}>SCAN TO PAY</div>
+                {settings.upiId && <div style={{ fontSize: '7px', marginTop: '1px' }}>UPI: {settings.upiId}</div>}
+                {settings.bankName && <div style={{ fontSize: '6.5px', marginTop: '1.5px', lineHeight: '8px' }}>BANK: {settings.bankName}<br/>A/C: {settings.bankAccNo}<br/>IFSC: {settings.bankIFSC}</div>}
+              </>
+            )}
             <div style={{ fontSize: '8px', marginTop: '6px', fontStyle: 'italic' }}>Thank You! Visit Again</div>
           </div>
         </div>
@@ -378,6 +429,18 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr style={{ fontWeight: 'bold', background: '#f3f4f6' }}>
+                <td style={{ padding: '5px', border: '1px solid #d1d5db', textAlign: 'center' }}></td>
+                <td style={{ padding: '5px', border: '1px solid #d1d5db' }}>Total</td>
+                <td style={{ padding: '5px', border: '1px solid #d1d5db', textAlign: 'center' }}>{calculateTotalBags()}</td>
+                <td style={{ padding: '5px', border: '1px solid #d1d5db', textAlign: 'center' }}>
+                  {settings.showTotalWeightReceipt !== false ? `${Number(calculateTotalWeight().toFixed(3))} Kg` : ''}
+                </td>
+                <td style={{ padding: '5px', border: '1px solid #d1d5db', textAlign: 'right' }}></td>
+                <td style={{ padding: '5px', border: '1px solid #d1d5db', textAlign: 'right' }}>{sale.subtotal.toFixed(2)}</td>
+              </tr>
+            </tfoot>
           </table>
 
           {/* Bottom section */}
@@ -388,17 +451,19 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 <h5 style={{ fontWeight: 600, fontSize: '0.7rem', margin: '0 0 0.1rem 0' }}>Terms & Conditions:</h5>
                 <p style={{ fontSize: '0.6rem', color: '#4b5563', whiteSpace: 'pre-line', margin: 0, lineHeight: 1.2 }}>{settings.terms}</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <div style={{ border: '1px solid #ccc', padding: '2px', borderRadius: '4px', width: '45px', height: '45px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ width: '38px', height: '38px', background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 5px 5px', border: '1px solid black' }}></div>
+              {settings.showQrPaymentReceipt !== false && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <div style={{ border: '1px solid #ccc', padding: '2px', borderRadius: '4px', width: '45px', height: '45px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '38px', height: '38px', background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 5px 5px', border: '1px solid black' }}></div>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.6rem', fontWeight: 600, margin: 0 }}>Scan QR to Pay</p>
+                    <p style={{ fontSize: '0.55rem', color: '#6b7280', margin: 0 }}>UPI Apps Supported</p>
+                    {settings.upiId && <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.55rem', color: '#4b5563', lineHeight: 1.1 }}><strong>UPI ID:</strong> {settings.upiId}</p>}
+                    {settings.bankName && <p style={{ margin: 0, fontSize: '0.55rem', color: '#4b5563', lineHeight: 1.1 }}><strong>Bank:</strong> {settings.bankName} &bull; A/C: {settings.bankAccNo} &bull; IFSC: {settings.bankIFSC}</p>}
+                  </div>
                 </div>
-                <div>
-                  <p style={{ fontSize: '0.6rem', fontWeight: 600, margin: 0 }}>Scan QR to Pay</p>
-                  <p style={{ fontSize: '0.55rem', color: '#6b7280', margin: 0 }}>UPI Apps Supported</p>
-                  {settings.upiId && <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.55rem', color: '#4b5563', lineHeight: 1.1 }}><strong>UPI ID:</strong> {settings.upiId}</p>}
-                  {settings.bankName && <p style={{ margin: 0, fontSize: '0.55rem', color: '#4b5563', lineHeight: 1.1 }}><strong>Bank:</strong> {settings.bankName} &bull; A/C: {settings.bankAccNo} &bull; IFSC: {settings.bankIFSC}</p>}
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Calculations */}
@@ -408,17 +473,19 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                   <span>Subtotal:</span>
                   <span>₹{sale.subtotal.toFixed(2)}</span>
                 </div>
-                <div className="print-flex-between">
-                  <span>Total Weight:</span>
-                  <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
-                </div>
+                {settings.showTotalWeightReceipt !== false && (
+                  <div className="print-flex-between">
+                    <span>Total Weight:</span>
+                    <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
+                  </div>
+                )}
                 {sale.discount > 0 && (
                   <div className="print-flex-between" style={{ color: 'red' }}>
                     <span>Discount:</span>
                     <span>- ₹{sale.discount.toFixed(2)}</span>
                   </div>
                 )}
-                {settings.gstin && (
+                {settings.showGstReceipt !== false && settings.gstin && (
                   <>
                     <div className="print-flex-between">
                       <span>CGST ({settings.taxRate / 2}%):</span>
@@ -434,9 +501,17 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                   <span>Grand Total:</span>
                   <span>₹{sale.total.toFixed(2)}</span>
                 </div>
-                {balanceDue > 0 && (
+                <div className="print-flex-between" style={{ fontWeight: 600 }}>
+                  <span>Received Amount:</span>
+                  <span>₹{receivedAmount.toFixed(2)}</span>
+                </div>
+                <div className="print-flex-between" style={{ fontWeight: 600 }}>
+                  <span>Bill Balance:</span>
+                  <span>₹{billBalance.toFixed(2)}</span>
+                </div>
+                {dealerForSale && (
                   <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 700, borderTop: '1px dashed #dc2626', paddingTop: '0.25rem', marginTop: '0.1rem', fontSize: '0.85rem' }}>
-                    <span>⚠ Balance Due:</span>
+                    <span>⚠ Current Balance:</span>
                     <span>₹{balanceDue.toFixed(2)}</span>
                   </div>
                 )}
@@ -504,12 +579,23 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr style={{ fontWeight: 'bold', borderTop: '1px dashed black' }}>
+              <td style={{ textAlign: 'left', paddingTop: '4px' }}>Total</td>
+              <td style={{ textAlign: 'right', paddingTop: '4px' }}></td>
+              <td style={{ textAlign: 'center', paddingTop: '4px' }}>{calculateTotalBags()}</td>
+              <td style={{ textAlign: 'center', paddingTop: '4px' }}>
+                {settings.showTotalWeightReceipt !== false ? `${Number(calculateTotalWeight().toFixed(3))} Kg` : ''}
+              </td>
+              <td style={{ textAlign: 'right', paddingTop: '4px' }}>{sale.subtotal.toFixed(2)}</td>
+            </tr>
+          </tfoot>
         </table>
 
         <div className="print-divider"></div>
 
         {/* GST breakdown table */}
-        {settings.gstin && (
+        {settings.showGstReceipt !== false && settings.gstin && (
           <div style={{ fontSize: '9px', marginBottom: '8px' }}>
             <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>GST BREAKDOWN:</div>
             <div className="print-flex-between">
@@ -538,10 +624,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <span>Total Bags:</span>
             <span>{calculateTotalBags()}</span>
           </div>
-          <div className="print-flex-between">
-            <span>Total Weight:</span>
-            <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
-          </div>
+          {settings.showTotalWeightReceipt !== false && (
+            <div className="print-flex-between">
+              <span>Total Weight:</span>
+              <span>{Number(calculateTotalWeight().toFixed(3))} Kg</span>
+            </div>
+          )}
           {sale.discount > 0 && (
             <div className="print-flex-between" style={{ color: 'red' }}>
               <span>Discount:</span>
@@ -552,9 +640,17 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <span>GRAND TOTAL:</span>
             <span>₹{sale.total.toFixed(2)}</span>
           </div>
-          {balanceDue > 0 && (
+          <div className="print-flex-between">
+            <span>RECEIVED AMOUNT:</span>
+            <span>₹{receivedAmount.toFixed(2)}</span>
+          </div>
+          <div className="print-flex-between">
+            <span>BILL BALANCE:</span>
+            <span>₹{billBalance.toFixed(2)}</span>
+          </div>
+          {dealerForSale && (
             <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 'bold', borderTop: '1px dashed #dc2626', paddingTop: '3px', marginTop: '1px' }}>
-              <span>BALANCE DUE:</span>
+              <span>CURRENT BALANCE:</span>
               <span>₹{balanceDue.toFixed(2)}</span>
             </div>
           )}
@@ -567,12 +663,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <div style={{ display: 'flex', height: '24px', width: '90px', letterSpacing: '2px', background: 'repeating-linear-gradient(90deg, #000 0px 2px, #fff 2px 4px)', borderLeft: '2px solid black', borderRight: '1px solid black', margin: '0 auto' }}></div>
             <div style={{ fontSize: '8px', marginTop: '2px' }}>*{sale.invoiceNo}*</div>
           </div>
-          <div>
-            <div style={{ width: '40px', height: '40px', border: '1px solid black', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 5px 5px' }}></div>
-            <div style={{ fontSize: '7px', fontWeight: 'bold', marginTop: '2px' }}>SCAN TO PAY</div>
-            {settings.upiId && <div style={{ fontSize: '7px', marginTop: '1.5px' }}>UPI ID: {settings.upiId}</div>}
-            {settings.bankName && <div style={{ fontSize: '6.5px', marginTop: '1.5px', lineHeight: '8px' }}>{settings.bankName} A/C: {settings.bankAccNo}<br/>IFSC: {settings.bankIFSC}</div>}
-          </div>
+          {settings.showQrPaymentReceipt !== false && (
+            <div>
+              <div style={{ width: '40px', height: '40px', border: '1px solid black', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 5px 5px' }}></div>
+              <div style={{ fontSize: '7px', fontWeight: 'bold', marginTop: '2px' }}>SCAN TO PAY</div>
+              {settings.upiId && <div style={{ fontSize: '7px', marginTop: '1.5px' }}>UPI ID: {settings.upiId}</div>}
+              {settings.bankName && <div style={{ fontSize: '6.5px', marginTop: '1.5px', lineHeight: '8px' }}>{settings.bankName} A/C: {settings.bankAccNo}<br/>IFSC: {settings.bankIFSC}</div>}
+            </div>
+          )}
         </div>
       </div>
     );

@@ -151,6 +151,17 @@ export interface PattiRecord {
   savedAt: string;
 }
 
+export interface Expense {
+  id: string;
+  date: string;
+  category: string;
+  amount: number;
+  paymentMethod: 'Cash' | 'UPI' | 'Card' | 'Bank Transfer';
+  referenceNo?: string;
+  note?: string;
+  createdBy?: string;
+}
+
 export interface SupplierPayment {
   id: string;
   supplierId: string;
@@ -184,6 +195,9 @@ export interface Settings {
   bankName?: string;
   bankAccNo?: string;
   bankIFSC?: string;
+  showTotalWeightReceipt?: boolean;
+  showGstReceipt?: boolean;
+  showQrPaymentReceipt?: boolean;
 }
 
 // Initial Mock Data
@@ -219,7 +233,10 @@ const INITIAL_SETTINGS: Settings = {
   upiId: 'supermart@okupi',
   bankName: 'State Bank of India',
   bankAccNo: '123456789012',
-  bankIFSC: 'SBIN0001234'
+  bankIFSC: 'SBIN0001234',
+  showTotalWeightReceipt: true,
+  showGstReceipt: true,
+  showQrPaymentReceipt: true
 };
 
 const INITIAL_SALES: Sale[] = [
@@ -301,6 +318,7 @@ const KEYS = {
   SUPPLIER_PAYMENTS: 'billing_supplier_payments',
   DEALER_PAYMENTS: 'billing_dealer_payments',
   PATTIS: 'billing_pattis',
+  EXPENSES: 'billing_expenses',
 };
 
 // Helper methods to read/write from localStorage
@@ -316,6 +334,7 @@ const getFirebasePath = (key: string): string | null => {
     case 'billing_supplier_payments': return 'supplier_payments';
     case 'billing_dealer_payments': return 'dealer_payments';
     case 'billing_pattis': return 'pattis';
+    case 'billing_expenses': return 'expenses';
     case 'login_history': return 'login_history';
     case 'app_users': return 'app_users';
     default: return null;
@@ -391,6 +410,8 @@ export const DB = {
     getJSON(KEYS.STOCK_HISTORY, INITIAL_STOCK_HISTORY);
     getJSON(KEYS.SUPPLIER_PAYMENTS, []);
     getJSON(KEYS.DEALER_PAYMENTS, []);
+    getJSON(KEYS.PATTIS, []);
+    getJSON(KEYS.EXPENSES, []);
   },
 
   reset: () => {
@@ -401,6 +422,8 @@ export const DB = {
     removeKey(KEYS.SALES);
     removeKey(KEYS.PURCHASES);
     removeKey(KEYS.STOCK_HISTORY);
+    removeKey(KEYS.PATTIS);
+    removeKey(KEYS.EXPENSES);
     DB.initialize();
   },
 
@@ -655,6 +678,26 @@ export const DB = {
     setJSON(KEYS.PATTIS, list);
   },
 
+  // Expenses
+  getExpenses: (): Expense[] => {
+    const expenses = getJSON<Expense[]>(KEYS.EXPENSES, []);
+    return expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  },
+  saveExpense: (expense: Expense): void => {
+    const expenses = DB.getExpenses();
+    const idx = expenses.findIndex((e) => e.id === expense.id);
+    if (idx >= 0) {
+      expenses[idx] = expense;
+    } else {
+      expenses.push(expense);
+    }
+    setJSON(KEYS.EXPENSES, expenses);
+  },
+  deleteExpense: (id: string): void => {
+    const expenses = DB.getExpenses();
+    setJSON(KEYS.EXPENSES, expenses.filter((e) => e.id !== id));
+  },
+
   // Settings
   getSettings: (): Settings => getJSON<Settings>(KEYS.SETTINGS, INITIAL_SETTINGS),
   saveSettings: (settings: Settings): void => {
@@ -670,6 +713,8 @@ export const DB = {
       sales: DB.getSales(),
       purchases: DB.getPurchases(),
       stockHistory: DB.getStockHistory(),
+      pattis: DB.getPattis(),
+      expenses: DB.getExpenses(),
       settings: DB.getSettings()
     };
     return JSON.stringify(data, null, 2);
@@ -686,6 +731,8 @@ export const DB = {
         if (data.purchases) setJSON(KEYS.PURCHASES, data.purchases);
         if (data.stock_history) setJSON(KEYS.STOCK_HISTORY, data.stock_history);
         if (data.stockHistory) setJSON(KEYS.STOCK_HISTORY, data.stockHistory); // handle both cases
+        if (data.pattis) setJSON(KEYS.PATTIS, data.pattis);
+        if (data.expenses) setJSON(KEYS.EXPENSES, data.expenses);
         setJSON(KEYS.SETTINGS, data.settings);
         return true;
       }
@@ -705,6 +752,8 @@ export const DB = {
         sales: DB.getSales(),
         purchases: DB.getPurchases(),
         stockHistory: DB.getStockHistory(),
+        pattis: DB.getPattis(),
+        expenses: DB.getExpenses(),
         settings: DB.getSettings()
       };
 

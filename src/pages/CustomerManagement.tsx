@@ -88,18 +88,47 @@ export const CustomerManagement: React.FC = () => {
     if (!selectedDealerLedger) return [];
     const dealerId = selectedDealerLedger.id;
 
-    // Debit entries = sales on credit
+    // Debit and Credit entries from sales (mixed/partial payments)
     const debitEntries = sales
       .filter(s => s.dealerId === dealerId && s.status === 'completed')
-      .map(s => ({
-        id: s.id,
-        date: s.date,
-        type: 'sale' as const,
-        description: `Invoice ${s.invoiceNo}`,
-        debit: s.total,
-        credit: 0,
-        invoiceNo: s.invoiceNo
-      }));
+      .flatMap(s => {
+        const paid = (s.paymentMethod === 'Credit') ? 0 :
+                     ((s.paymentDetails?.cashAmount || 0) + 
+                      (s.paymentDetails?.upiAmount || 0) + 
+                      (s.paymentDetails?.cardAmount || 0));
+        
+        const entries: Array<{
+          id: string;
+          date: string;
+          type: 'sale' | 'payment' | 'debit_adj';
+          description: string;
+          debit: number;
+          credit: number;
+          invoiceNo: string;
+        }> = [{
+          id: s.id,
+          date: s.date,
+          type: 'sale',
+          description: `Invoice ${s.invoiceNo}`,
+          debit: s.total,
+          credit: 0,
+          invoiceNo: s.invoiceNo
+        }];
+
+        if (paid > 0) {
+          entries.push({
+            id: s.id + '-pay',
+            date: s.date,
+            type: 'payment',
+            description: `Payment for Invoice ${s.invoiceNo} (${s.paymentMethod})`,
+            debit: 0,
+            credit: paid,
+            invoiceNo: s.invoiceNo
+          });
+        }
+
+        return entries;
+      });
 
     // Credit/Debit entries = payments received or manual adjustments
     const paymentEntries = dealerPayments

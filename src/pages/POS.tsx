@@ -287,11 +287,31 @@ export const POS: React.FC = () => {
   // Complete sale handler
   const handleCompleteSale = () => {
     const totalPaid = Number(cashPaid) + Number(upiPaid) + Number(cardPaid);
-    
+
     // Credit sales are allowed without upfront payment — full amount goes to outstanding
     if (paymentMethod !== 'Credit') {
       if (paymentMethod !== 'Mixed' && totalPaid < cartTotal) {
         showToast(`Insufficient payment amount (Paid: ₹${totalPaid}, Due: ₹${cartTotal})`, 'warning');
+        return;
+      }
+      if (paymentMethod === 'Mixed') {
+        if (!selectedDealerId && totalPaid !== cartTotal) {
+          showToast(`Link a customer to save remaining balance as credit, or allocate full payment (Paid: ₹${totalPaid}, Due: ₹${cartTotal})`, 'warning');
+          return;
+        }
+        if (totalPaid > cartTotal) {
+          showToast(`Allocated payment amount exceeds total (Paid: ₹${totalPaid}, Due: ₹${cartTotal})`, 'warning');
+          return;
+        }
+      }
+    } else {
+      if (totalPaid > cartTotal) {
+        showToast(`Allocated payment amount exceeds total (Paid: ₹${totalPaid}, Due: ₹${cartTotal})`, 'warning');
+        return;
+      }
+      const creditAmt = cartTotal - totalPaid;
+      if (creditAmt > 0 && !selectedDealerId) {
+        showToast(`Please link a customer to save remaining balance of ₹${creditAmt.toFixed(2)} as credit`, 'warning');
         return;
       }
     }
@@ -343,22 +363,18 @@ export const POS: React.FC = () => {
       profit: Number(totalProfit.toFixed(2)),
       paymentMethod,
       paymentDetails: {
-        cashAmount: paymentMethod === 'Cash' || paymentMethod === 'Mixed' ? Number(cashPaid) : 0,
+        cashAmount: paymentMethod === 'Cash' || paymentMethod === 'Mixed' || paymentMethod === 'Credit' ? Number(cashPaid) : 0,
         upiAmount: paymentMethod === 'UPI' || paymentMethod === 'Mixed' ? Number(upiPaid) : 0,
         cardAmount: paymentMethod === 'Card' || paymentMethod === 'Mixed' ? Number(cardPaid) : 0,
       },
       status: 'completed',
       type: 'retail',
-      dealerId: paymentMethod === 'Credit' ? (selectedDealerId || undefined) : undefined,
+      dealerId: selectedDealerId || undefined,
       createdBy: user?.email || 'Unknown'
     };
 
     DB.saveSale(saleData);
 
-    // If Credit: add to dealer/customer outstanding
-    if (paymentMethod === 'Credit' && selectedDealerId) {
-      DB.updateDealerOutstanding(selectedDealerId, cartTotal);
-    }
 
     refreshData();
     clearRetailCart();
@@ -1262,10 +1278,16 @@ export const POS: React.FC = () => {
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border-color)', paddingTop: '0.5rem', fontSize: '0.85rem' }}>
                     <span>Total Allocated:</span>
-                    <span style={{ fontWeight: 700, color: (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) === cartTotal ? 'var(--success)' : 'var(--danger)' }}>
+                    <span style={{ fontWeight: 700, color: (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) === cartTotal || (!!selectedDealerId && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) < cartTotal) ? 'var(--success)' : 'var(--danger)' }}>
                       ₹{(Number(cashPaid) + Number(upiPaid) + Number(cardPaid)).toFixed(2)}
                     </span>
                   </div>
+                  {!!selectedDealerId && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) < cartTotal && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 600 }}>
+                      <span>Remaining to Credit:</span>
+                      <span>₹{(cartTotal - (Number(cashPaid) + Number(upiPaid) + Number(cardPaid))).toFixed(2)}</span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="form-group">
@@ -1274,14 +1296,15 @@ export const POS: React.FC = () => {
                     type="number"
                     className="form-control"
                     style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)' }}
-                    value={paymentMethod === 'Cash' ? (cashPaid || '') : paymentMethod === 'UPI' ? (upiPaid || '') : (cardPaid || '')}
+                    value={paymentMethod === 'Cash' || paymentMethod === 'Credit' ? (cashPaid || '') : paymentMethod === 'UPI' ? (upiPaid || '') : (cardPaid || '')}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value) || 0;
-                      if (paymentMethod === 'Cash') setCashPaid(val);
+                      if (paymentMethod === 'Cash' || paymentMethod === 'Credit') setCashPaid(val);
                       else if (paymentMethod === 'UPI') setUpiPaid(val);
                       else setCardPaid(val);
                     }}
-                    min={cartTotal}
+                    min={paymentMethod === 'Credit' ? 0 : cartTotal}
+                    max={paymentMethod === 'Credit' ? cartTotal : undefined}
                   />
                 </div>
               )}
@@ -1291,16 +1314,18 @@ export const POS: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(239,68,68,0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--danger)', fontWeight: 600, fontSize: '0.85rem' }}>
                     <AlertCircle size={15} />
-                    Credit Sale — Full amount will be added to customer's outstanding
+                    {Number(cashPaid) > 0 
+                      ? `Credit Sale — ₹${(cartTotal - Number(cashPaid)).toFixed(2)} will be added to customer's outstanding` 
+                      : "Credit Sale — Full amount will be added to customer's outstanding"}
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Link to Customer (optional)</label>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Link to Customer (required)</label>
                     <select
                       className="form-control"
                       value={selectedDealerId}
                       onChange={e => setSelectedDealerId(e.target.value)}
                     >
-                      <option value="">— Walk-in / New Customer —</option>
+                      <option value="">— Select Customer —</option>
                       {dealers.map(d => (
                         <option key={d.id} value={d.id}>
                           {d.name} {d.outstanding > 0 ? `(Due: ₹${d.outstanding.toFixed(2)})` : ''}
@@ -1310,7 +1335,7 @@ export const POS: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderTop: '1px dashed rgba(239,68,68,0.3)', paddingTop: '0.5rem' }}>
                     <span style={{ fontWeight: 600 }}>Credit Amount:</span>
-                    <span style={{ fontWeight: 800, color: 'var(--danger)', fontSize: '1rem' }}>₹{cartTotal.toFixed(2)}</span>
+                    <span style={{ fontWeight: 800, color: 'var(--danger)', fontSize: '1rem' }}>₹{(cartTotal - Number(cashPaid)).toFixed(2)}</span>
                   </div>
                 </div>
               )}
@@ -1332,7 +1357,8 @@ export const POS: React.FC = () => {
                 onClick={handleCompleteSale}
                 style={paymentMethod === 'Credit' ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : {}}
                 disabled={
-                  (paymentMethod === 'Mixed' && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) !== cartTotal)
+                  (paymentMethod === 'Mixed' && !selectedDealerId && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) !== cartTotal) ||
+                  (paymentMethod === 'Mixed' && !!selectedDealerId && (Number(cashPaid) + Number(upiPaid) + Number(cardPaid)) > cartTotal)
                 }
               >
                 {paymentMethod === 'Credit' ? '📋 Confirm Credit Sale' : 'Checkout & Print'}

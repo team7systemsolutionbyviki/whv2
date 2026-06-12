@@ -13,6 +13,7 @@ import { Settings } from './pages/Settings';
 import { ProfitAdder } from './pages/ProfitAdder';
 import { CustomerManagement } from './pages/CustomerManagement';
 import { Patti } from './pages/Patti';
+import { Expenses } from './pages/Expenses';
 import { Login } from './pages/Login';
 import { X, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 
@@ -104,6 +105,8 @@ const AppContent: React.FC = () => {
         return <CustomerManagement />;
       case 'patti':
         return <Patti />;
+      case 'expenses':
+        return <Expenses />;
       default:
         return <Dashboard />;
     }

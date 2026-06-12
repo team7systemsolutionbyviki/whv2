@@ -78,6 +78,9 @@ export const Settings: React.FC = () => {
   const [bankName, setBankName] = useState(settings.bankName || '');
   const [bankAccNo, setBankAccNo] = useState(settings.bankAccNo || '');
   const [bankIFSC, setBankIFSC] = useState(settings.bankIFSC || '');
+  const [showTotalWeightReceipt, setShowTotalWeightReceipt] = useState<boolean>(settings.showTotalWeightReceipt !== false);
+  const [showGstReceipt, setShowGstReceipt] = useState<boolean>(settings.showGstReceipt !== false);
+  const [showQrPaymentReceipt, setShowQrPaymentReceipt] = useState<boolean>(settings.showQrPaymentReceipt !== false);
 
   // Firebase Config States
   const saved = localStorage.getItem('firebase_config');
@@ -158,7 +161,10 @@ export const Settings: React.FC = () => {
       upiId,
       bankName,
       bankAccNo,
-      bankIFSC
+      bankIFSC,
+      showTotalWeightReceipt,
+      showGstReceipt,
+      showQrPaymentReceipt
     };
 
     DB.saveSettings(updatedSettings);
@@ -276,6 +282,9 @@ export const Settings: React.FC = () => {
       setBankName(fresh.bankName || '');
       setBankAccNo(fresh.bankAccNo || '');
       setBankIFSC(fresh.bankIFSC || '');
+      setShowTotalWeightReceipt(fresh.showTotalWeightReceipt !== false);
+      setShowGstReceipt(fresh.showGstReceipt !== false);
+      setShowQrPaymentReceipt(fresh.showQrPaymentReceipt !== false);
 
       showToast('System factory reset completed', 'danger');
     }
@@ -462,6 +471,77 @@ export const Settings: React.FC = () => {
                 <option value="a5">A5 Invoice (148mm x 210mm)</option>
                 <option value="a4">A4 Invoice (210mm x 297mm)</option>
               </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+              <label style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                fontSize: '0.85rem', 
+                background: 'var(--bg-input)', 
+                padding: '0.6rem 0.8rem', 
+                border: '1px solid var(--border-color)', 
+                borderRadius: 'var(--border-radius-sm)', 
+                cursor: 'pointer',
+                userSelect: 'none',
+                flex: 1,
+                minWidth: '200px'
+              }}>
+                <input 
+                  type="checkbox" 
+                  checked={showTotalWeightReceipt} 
+                  onChange={(e) => setShowTotalWeightReceipt(e.target.checked)}
+                  style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                />
+                <span style={{ fontWeight: 500 }}>Show Total Weight on Receipt</span>
+              </label>
+
+              <label style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                fontSize: '0.85rem', 
+                background: 'var(--bg-input)', 
+                padding: '0.6rem 0.8rem', 
+                border: '1px solid var(--border-color)', 
+                borderRadius: 'var(--border-radius-sm)', 
+                cursor: 'pointer',
+                userSelect: 'none',
+                flex: 1,
+                minWidth: '200px'
+              }}>
+                <input 
+                  type="checkbox" 
+                  checked={showGstReceipt} 
+                  onChange={(e) => setShowGstReceipt(e.target.checked)}
+                  style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                />
+                <span style={{ fontWeight: 500 }}>Show GST Tax (18%) on Receipt</span>
+              </label>
+
+              <label style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                fontSize: '0.85rem', 
+                background: 'var(--bg-input)', 
+                padding: '0.6rem 0.8rem', 
+                border: '1px solid var(--border-color)', 
+                borderRadius: 'var(--border-radius-sm)', 
+                cursor: 'pointer',
+                userSelect: 'none',
+                flex: 1,
+                minWidth: '200px'
+              }}>
+                <input 
+                  type="checkbox" 
+                  checked={showQrPaymentReceipt} 
+                  onChange={(e) => setShowQrPaymentReceipt(e.target.checked)}
+                  style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                />
+                <span style={{ fontWeight: 500 }}>Show QR Code & Payment Info</span>
+              </label>
             </div>
 
             <div className="form-group">
