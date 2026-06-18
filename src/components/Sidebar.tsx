@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { useApp, ActiveTab } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -17,12 +18,62 @@ import {
   TrendingUp,
   UserCheck,
   ClipboardList,
-  Receipt
+  Receipt,
+  X,
+  Printer
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, darkMode, setDarkMode, products, settings } = useApp();
+  const { activeTab, setActiveTab, darkMode, setDarkMode, products, settings, sales } = useApp();
   const { user, logout } = useAuth();
+
+  // Logout shift summary states
+  const [showLogoutModal, setShowLogoutModal] = React.useState(false);
+  const [isPrintingSummary, setIsPrintingSummary] = React.useState(false);
+
+  // Calculate today's shift summary for current staff
+  const shiftSummary = React.useMemo(() => {
+    if (!sales || !user) return { count: 0, cash: 0, upi: 0, card: 0, bags: 0, kg: 0, total: 0 };
+    
+    const todayStr = new Date().toDateString();
+    const staffSales = sales.filter(s => 
+      s.createdBy === user.email && 
+      new Date(s.date).toDateString() === todayStr &&
+      s.status === 'completed'
+    );
+
+    let count = staffSales.length;
+    let cash = 0;
+    let upi = 0;
+    let card = 0;
+    let bags = 0;
+    let kg = 0;
+    let total = 0;
+
+    staffSales.forEach(sale => {
+      cash += sale.paymentDetails?.cashAmount || 0;
+      upi += sale.paymentDetails?.upiAmount || 0;
+      card += sale.paymentDetails?.cardAmount || 0;
+      total += sale.total;
+
+      sale.items.forEach(item => {
+        bags += item.bags || 0;
+        kg += item.weight || 0;
+      });
+    });
+
+    return { count, cash, upi, card, bags, kg, total };
+  }, [sales, user]);
+
+  const handlePrintAndLogout = () => {
+    setIsPrintingSummary(true);
+    setTimeout(() => {
+      window.print();
+      setIsPrintingSummary(false);
+      setShowLogoutModal(false);
+      logout();
+    }, 500);
+  };
 
   // Calculate low stock items count
   const lowStockCount = products.filter(p => p.currentStock <= p.minStockAlert).length;
@@ -234,7 +285,7 @@ export const Sidebar: React.FC = () => {
               </div>
             </div>
             <button
-              onClick={logout}
+              onClick={() => setShowLogoutModal(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -302,6 +353,157 @@ export const Sidebar: React.FC = () => {
           <span style={{ color: 'var(--primary)', fontWeight: 600 }}>9360039283</span>
         </div>
       </div>
+
+      {showLogoutModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '420px', background: 'var(--bg-sidebar)' }}>
+            <div className="modal-header">
+              <h3>Confirm Log Out &amp; Shift Cashout</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowLogoutModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+                Here is your shift cashout summary for today:
+              </p>
+              
+              <div style={{ 
+                background: 'var(--bg-input)', 
+                border: '1px solid var(--border-color)', 
+                borderRadius: 'var(--border-radius-sm)', 
+                padding: '1rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+                fontSize: '0.9rem'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Staff User:</span>
+                  <span style={{ fontWeight: 600 }}>{user?.email}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.2rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Shift Date:</span>
+                  <span style={{ fontWeight: 600 }}>{new Date().toLocaleDateString()}</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Total Sales Count:</span>
+                  <span style={{ fontWeight: 600 }}>{shiftSummary.count} bills</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Cash in Hand:</span>
+                  <span style={{ fontWeight: 600, color: 'var(--success)' }}>₹{shiftSummary.cash.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>GPay / UPI Total:</span>
+                  <span style={{ fontWeight: 600, color: 'var(--info)' }}>₹{shiftSummary.upi.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.2rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Card Total:</span>
+                  <span style={{ fontWeight: 600, color: 'var(--warning)' }}>₹{shiftSummary.card.toFixed(2)}</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Total Sales in Bag:</span>
+                  <span style={{ fontWeight: 600 }}>{shiftSummary.bags} bags</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.2rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Total Weight (KG):</span>
+                  <span style={{ fontWeight: 600 }}>{Number(shiftSummary.kg.toFixed(3))} Kg</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary)', paddingTop: '0.25rem' }}>
+                  <span>TOTAL SALES:</span>
+                  <span>₹{shiftSummary.total.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <button 
+                className="btn btn-primary" 
+                onClick={handlePrintAndLogout}
+                style={{ width: '100%', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}
+              >
+                <Printer size={16} />
+                <span>Print Summary &amp; Log Out</span>
+              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', width: '100%' }}>
+                <button 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    setShowLogoutModal(false);
+                    logout();
+                  }}
+                  style={{ width: '100%' }}
+                >
+                  Log Out Only
+                </button>
+                <button 
+                  className="btn btn-ghost" 
+                  onClick={() => setShowLogoutModal(false)}
+                  style={{ width: '100%' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPrintingSummary && createPortal(
+        <div id="print-area-root" style={{ fontFamily: 'Courier New', color: '#000', background: '#fff', padding: '15px', width: '80mm', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '10px', marginBottom: '10px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 'bold', margin: '0 0 4px 0' }}>{settings.shopName || 'SUPER MART'}</h3>
+            <h4 style={{ fontSize: '12px', fontWeight: 'bold', margin: '0' }}>SHIFT CASHOUT SUMMARY</h4>
+            <span style={{ fontSize: '9px' }}>{new Date().toLocaleString()}</span>
+          </div>
+
+          <div style={{ fontSize: '10px', display: 'flex', flexDirection: 'column', gap: '4px', borderBottom: '1px dashed #000', paddingBottom: '10px', marginBottom: '10px' }}>
+            <div><strong>Staff:</strong> {user?.email}</div>
+            <div><strong>Date:</strong> {new Date().toLocaleDateString()}</div>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
+            <tbody>
+              <tr>
+                <td style={{ padding: '4px 0' }}><strong>Total Sales:</strong></td>
+                <td style={{ padding: '4px 0', textAlign: 'right' }}>{shiftSummary.count} bills</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '4px 0' }}><strong>Cash in Hand:</strong></td>
+                <td style={{ padding: '4px 0', textAlign: 'right' }}>₹{shiftSummary.cash.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '4px 0' }}><strong>GPay / UPI:</strong></td>
+                <td style={{ padding: '4px 0', textAlign: 'right' }}>₹{shiftSummary.upi.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '4px 0' }}><strong>Card Amount:</strong></td>
+                <td style={{ padding: '4px 0', textAlign: 'right' }}>₹{shiftSummary.card.toFixed(2)}</td>
+              </tr>
+              <tr style={{ borderTop: '1px dashed #ccc', paddingTop: '4px' }}>
+                <td style={{ padding: '4px 0' }}><strong>Total Sales (Bag):</strong></td>
+                <td style={{ padding: '4px 0', textAlign: 'right' }}>{shiftSummary.bags} bags</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '4px 0' }}><strong>Total KG Weight:</strong></td>
+                <td style={{ padding: '4px 0', textAlign: 'right' }}>{Number(shiftSummary.kg.toFixed(3))} Kg</td>
+              </tr>
+              <tr style={{ borderTop: '1px dashed #000', fontSize: '12px', fontWeight: 'bold' }}>
+                <td style={{ padding: '6px 0 0 0' }}>TOTAL SALES AMT:</td>
+                <td style={{ padding: '6px 0 0 0', textAlign: 'right' }}>₹{shiftSummary.total.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '9px', fontStyle: 'italic', borderTop: '1px dashed #000', paddingTop: '10px' }}>
+            Shift Ended. Thank You!
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

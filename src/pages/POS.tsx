@@ -17,7 +17,8 @@ import {
   Sparkles,
   ShoppingBag,
   X,
-  AlertCircle
+  AlertCircle,
+  Printer
 } from 'lucide-react';
 import { PrintPreviewModal } from '../components/PrintPreviewModal';
 import { getCartItemWeightInKg } from '../utils/weight';
@@ -49,7 +50,8 @@ export const POS: React.FC = () => {
     recallCart,
     deleteHeldCart,
     settings,
-    purchases
+    purchases,
+    sales
   } = useApp();
 
   // Search & Barcode state
@@ -156,6 +158,18 @@ export const POS: React.FC = () => {
 
   // Print state after payment
   const [justCompletedSale, setJustCompletedSale] = useState<Sale | null>(null);
+
+  // Print state for viewing/printing a past sale
+  const [selectedPrintSale, setSelectedPrintSale] = useState<Sale | null>(null);
+  const [recentSalesCount, setRecentSalesCount] = useState<number>(5);
+
+  const recentSalesList = useMemo(() => {
+    if (!sales) return [];
+    return [...sales]
+      .filter(s => s.type === 'retail')
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, recentSalesCount);
+  }, [sales, recentSalesCount]);
 
   // Customer & Phone Suggestions
   const [customerSuggestions, setCustomerSuggestions] = useState<Dealer[]>([]);
@@ -1183,6 +1197,157 @@ export const POS: React.FC = () => {
         </div>
       </div>
 
+      {/* Recent Sales History */}
+      <div className="glass-panel" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+            <History size={18} style={{ color: 'var(--primary)' }} />
+            <span>Recent Sales History</span>
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show:</span>
+            <select
+              className="form-control"
+              style={{
+                width: '80px',
+                padding: '0.2rem 0.5rem',
+                fontSize: '0.8rem',
+                height: '28px',
+                background: 'var(--bg-input)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--border-radius-sm)',
+                color: 'var(--text-primary)',
+              }}
+              value={recentSalesCount}
+              onChange={(e) => setRecentSalesCount(Number(e.target.value))}
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
+        </div>
+
+        {recentSalesList.length > 0 ? (
+          <div className="table-container">
+            <table className="custom-table" style={{ fontSize: '0.85rem' }}>
+              <thead>
+                <tr>
+                  <th>Invoice No</th>
+                  <th>Date &amp; Time</th>
+                  <th>Customer</th>
+                  <th>Items</th>
+                  <th>Payment Method</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
+                  <th style={{ textAlign: 'center', width: '100px' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentSalesList.map((sale) => {
+                  const itemsCount = sale.items.reduce((sum, item) => sum + item.qty, 0);
+                  const itemsSummary = sale.items.map(item => item.name).join(', ');
+                  
+                  let badgeClass = 'badge';
+                  if (sale.paymentMethod === 'Cash') badgeClass += ' badge-success';
+                  else if (sale.paymentMethod === 'UPI') badgeClass += ' badge-info';
+                  else if (sale.paymentMethod === 'Card') badgeClass += ' badge-warning';
+                  else if (sale.paymentMethod === 'Credit') badgeClass += ' badge-danger';
+                  else badgeClass += ' badge-success';
+
+                  return (
+                    <tr key={sale.id}>
+                      <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                        {sale.invoiceNo}
+                      </td>
+                      <td style={{ color: 'var(--text-secondary)' }}>
+                        {new Date(sale.date).toLocaleString(undefined, {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true
+                        })}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{sale.customerName}</div>
+                        {sale.customerPhone && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            📞 {sale.customerPhone}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ maxWidth: '250px' }}>
+                        <div 
+                          style={{ 
+                            textOverflow: 'ellipsis', 
+                            overflow: 'hidden', 
+                            whiteSpace: 'nowrap',
+                            color: 'var(--text-secondary)'
+                          }} 
+                          title={itemsSummary}
+                        >
+                          {itemsSummary}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {sale.items.length} unique items ({Number(itemsCount.toFixed(2))} qty)
+                        </div>
+                      </td>
+                      <td>
+                        {sale.paymentMethod === 'Mixed' ? (
+                          <span 
+                            className="badge" 
+                            style={{ 
+                              background: 'var(--primary-light)', 
+                              color: 'var(--primary)' 
+                            }}
+                          >
+                            Mixed
+                          </span>
+                        ) : (
+                          <span className={badgeClass}>{sale.paymentMethod}</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                        ₹{sale.total.toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          className="btn btn-secondary btn-icon"
+                          style={{ 
+                            padding: '0.35rem 0.6rem', 
+                            fontSize: '0.75rem',
+                            display: 'inline-flex',
+                            gap: '0.3rem',
+                            borderRadius: 'var(--border-radius-sm)'
+                          }}
+                          onClick={() => setSelectedPrintSale(sale)}
+                          title="Print / View Receipt"
+                        >
+                          <Printer size={14} />
+                          <span>Print</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '2rem 1rem', 
+            color: 'var(--text-muted)', 
+            border: '1px dashed var(--border-color)', 
+            borderRadius: 'var(--border-radius-sm)',
+            fontSize: '0.9rem'
+          }}>
+            No recent sales found.
+          </div>
+        )}
+      </div>
+
       {/* Checkout Split Payment Modal */}
       {isPayModalOpen && (
         <div className="modal-overlay">
@@ -1537,6 +1702,15 @@ export const POS: React.FC = () => {
           sale={justCompletedSale} 
           onClose={() => setJustCompletedSale(null)} 
           autoPrint={true}
+        />
+      )}
+
+      {/* Print Preview Modal for selected recent sale */}
+      {selectedPrintSale && (
+        <PrintPreviewModal 
+          sale={selectedPrintSale} 
+          onClose={() => setSelectedPrintSale(null)} 
+          autoPrint={false}
         />
       )}
 
