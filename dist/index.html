@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.json" />
+    <meta name="theme-color" content="#6366f1" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>wolsales-billing</title>
     <script>
@@ -28,7 +30,21 @@
         }, 50);
       })();
     </script>
-    <script type="module" crossorigin src="./assets/index-w9Gsezy8.js"></script>
+    <script>
+      // Register Service Worker for PWA support
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('./sw.js')
+            .then(function(reg) {
+              console.log('PWA Service Worker registered with scope: ', reg.scope);
+            })
+            .catch(function(err) {
+              console.error('PWA Service Worker registration failed: ', err);
+            });
+        });
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-nZYy4GGI.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-RBOPjv3w.css">
   </head>
   <body>

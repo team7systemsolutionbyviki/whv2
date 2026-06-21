@@ -89,8 +89,14 @@ export interface Purchase {
   coolie?: number;
   vehicleNo?: string;
   deliveryPersonPhone?: string;
+  transporterName?: string;
+  truckOwnerMob?: string;
+  driverMob?: string;
+  truckDriverName?: string;
   lotNo?: string;
   vehicleMark?: string;
+  freightRate?: number;
+  advance?: number;
   total: number;
   paymentStatus: 'Paid' | 'Due';
   dueAmount: number;
@@ -139,6 +145,12 @@ export interface PattiRecord {
   mark: string;
   name: string;
   vehicleNo: string;
+  transporterName?: string;
+  truckOwnerMob?: string;
+  driverMob?: string;
+  truckDriverName?: string;
+  freightRate?: number;
+  advance?: number;
   items: { id: string; itemName: string; rate: number; qty: number; weight: number; amount: number }[];
   expenses: {
     rent: number;
@@ -346,8 +358,10 @@ const syncToFirebase = (key: string, value: any): void => {
   const path = getFirebasePath(key);
   if (!path) return;
   try {
+    // Sanitize value for Firebase (Firebase does not accept undefined values)
+    const sanitizedValue = value === undefined ? null : JSON.parse(JSON.stringify(value));
     const dbRef = ref(rtdb, path);
-    set(dbRef, value).catch(err => {
+    set(dbRef, sanitizedValue).catch(err => {
       console.error(`Failed to sync key ${key} to Firebase path ${path}:`, err);
     });
   } catch (err) {

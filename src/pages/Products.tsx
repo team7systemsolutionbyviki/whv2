@@ -723,10 +723,16 @@ export const Products: React.FC = () => {
                 {/* Profit Calculator widget */}
                 {showCalculator && (
                   <ProfitCalculator
-                    purchasePrice={purchasePrice}
-                    initialSalesPrice={salesPrice}
+                    purchasePrice={variations.length > 0 ? (variations[0].purchasePrice || 0) : purchasePrice}
+                    initialSalesPrice={variations.length > 0 ? (variations[0].salesPrice || 0) : salesPrice}
                     onApply={(calculatedSalesPrice) => {
-                      setSalesPrice(calculatedSalesPrice);
+                      if (variations.length > 0) {
+                        const updated = [...variations];
+                        updated[0].salesPrice = calculatedSalesPrice;
+                        setVariations(updated);
+                      } else {
+                        setSalesPrice(calculatedSalesPrice);
+                      }
                       showToast(`Sales Price updated to ₹${calculatedSalesPrice}`, 'info');
                     }}
                     onClose={() => setShowCalculator(false)}

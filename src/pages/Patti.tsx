@@ -43,6 +43,12 @@ interface PattiData {
   mark: string;
   name: string;
   vehicleNo: string;
+  transporterName?: string;
+  truckOwnerMob?: string;
+  driverMob?: string;
+  truckDriverName?: string;
+  freightRate?: string;
+  advance?: string;
   items: PattiItem[];
   expenses: PattiExpenses;
   lessAmount: number;
@@ -79,6 +85,12 @@ const defaultPatti = (): PattiData => ({
   mark: '',
   name: '',
   vehicleNo: '',
+  transporterName: '',
+  truckOwnerMob: '',
+  driverMob: '',
+  truckDriverName: '',
+  freightRate: '',
+  advance: '',
   items: [emptyItem()],
   expenses: {
     rent: 0,
@@ -184,6 +196,12 @@ export const Patti: React.FC = () => {
       mark: pattiData.mark,
       name: pattiData.name,
       vehicleNo: pattiData.vehicleNo,
+      transporterName: pattiData.transporterName || undefined,
+      truckOwnerMob: pattiData.truckOwnerMob || undefined,
+      driverMob: pattiData.driverMob || undefined,
+      truckDriverName: pattiData.truckDriverName || undefined,
+      freightRate: pattiData.freightRate ? parseFloat(pattiData.freightRate) || undefined : undefined,
+      advance: pattiData.advance ? parseFloat(pattiData.advance) || undefined : undefined,
       items: pattiData.items,
       expenses: pattiData.expenses,
       lessAmount: pattiData.lessAmount,
@@ -262,13 +280,19 @@ export const Patti: React.FC = () => {
             { key: 'mark', label: 'Mark / Lot', placeholder: 'e.g. MRP250' },
             { key: 'name', label: 'Party Name *', placeholder: 'Dealer / Buyer name' },
             { key: 'vehicleNo', label: 'Vehicle No', placeholder: 'TN 00 AA 0000' },
+            { key: 'transporterName', label: 'Transporter Name', placeholder: 'e.g. MAHALAXMI' },
+            { key: 'truckDriverName', label: 'Truck Driver Name', placeholder: 'e.g. Satish kumar' },
+            { key: 'driverMob', label: 'Driver Mobile (Driver Mob)', placeholder: 'e.g. 9003490996' },
+            { key: 'truckOwnerMob', label: 'Truck Owner Mobile', placeholder: 'e.g. 9845012345' },
+            { key: 'freightRate', label: 'Freight Rate (₹)', placeholder: 'e.g. 150', type: 'number' },
+            { key: 'advance', label: 'Advance Amount (₹)', placeholder: 'e.g. 2000', type: 'number' },
           ].map(({ key, label, placeholder, type }) => (
             <div key={key} className="form-group" style={{ marginBottom: 0 }}>
               <label>{label}</label>
               <input
                 className="form-control"
                 type={type || 'text'}
-                value={(patti as any)[key]}
+                value={(patti as any)[key] || ''}
                 placeholder={placeholder}
                 style={key === 'vehicleNo' ? { textTransform: 'uppercase' } : undefined}
                 onChange={(e) => setPatti((p) => ({ ...p, [key]: e.target.value }))}
@@ -371,7 +395,7 @@ export const Patti: React.FC = () => {
             {([
               { key: 'rent' as const, label: 'Rent / Freight (₹)' },
               { key: 'loading' as const, label: 'Loading / Unloading (₹)' },
-              { key: 'commission' as const, label: 'Commission / Hamali (₹)' },
+              { key: 'commission' as const, label: 'Commission (₹)' },
             ]).map(({ key, label }) => (
               <div key={key} style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: '0.5rem', alignItems: 'center' }}>
                 <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{label}</label>
@@ -613,12 +637,24 @@ const PattiPrintView: React.FC<{
         {shopAddress && <div style={{ fontSize: '11px', color: '#333' }}>{shopAddress}</div>}
         {shopPhone && <div style={{ fontSize: '11px' }}>Ph: {shopPhone}</div>}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '10px', fontSize: '11.5px' }}>
-        <div><strong>Bill No:</strong> {patti.billNo}</div>
-        <div style={{ textAlign: 'right' }}><strong>Date:</strong> {new Date(patti.date).toLocaleDateString('en-IN')}</div>
-        <div><strong>Party Name:</strong> {patti.name}</div>
-        <div style={{ textAlign: 'right' }}><strong>Vehicle No:</strong> {patti.vehicleNo || '-'}</div>
-        {patti.mark && <div><strong>Mark / Lot:</strong> {patti.mark}</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '10px', border: '1px solid #000', padding: '8px', fontSize: '11px' }}>
+        <div>
+          <strong>BILL DETAILS:</strong>
+          <div style={{ marginTop: '2px' }}><strong>Bill No:</strong> {patti.billNo}</div>
+          <div><strong>Date:</strong> {new Date(patti.date).toLocaleDateString('en-IN')}</div>
+          <div><strong>Party Name:</strong> {patti.name}</div>
+          {patti.mark && <div><strong>Mark / Lot:</strong> {patti.mark}</div>}
+        </div>
+        <div>
+          <strong>TRANSPORT DETAILS:</strong>
+          <div style={{ marginTop: '2px' }}><strong>Vehicle No:</strong> {patti.vehicleNo || '-'}</div>
+          {patti.transporterName && <div><strong>Transporter:</strong> {patti.transporterName}</div>}
+          {patti.truckDriverName && <div><strong>Driver Name:</strong> {patti.truckDriverName}</div>}
+          {patti.driverMob && <div><strong>Driver Mob:</strong> {patti.driverMob}</div>}
+          {patti.truckOwnerMob && <div><strong>Owner Mob:</strong> {patti.truckOwnerMob}</div>}
+          {patti.freightRate && <div><strong>Freight Rate:</strong> ₹{patti.freightRate}</div>}
+          {patti.advance && <div><strong>Advance Paid:</strong> ₹{patti.advance}</div>}
+        </div>
       </div>
 
       {/* Items */}
@@ -668,7 +704,7 @@ const PattiPrintView: React.FC<{
               <tr><td style={{ border: '1px solid #ccc', padding: '4px 6px' }}>Loading / Unloading</td><td style={{ border: '1px solid #ccc', padding: '4px 6px', textAlign: 'right' }}>{fmt(patti.expenses.loading)}</td></tr>
             )}
             {patti.expenses.commission > 0 && (
-              <tr><td style={{ border: '1px solid #ccc', padding: '4px 6px' }}>Commission / Hamali</td><td style={{ border: '1px solid #ccc', padding: '4px 6px', textAlign: 'right' }}>{fmt(patti.expenses.commission)}</td></tr>
+              <tr><td style={{ border: '1px solid #ccc', padding: '4px 6px' }}>Commission</td><td style={{ border: '1px solid #ccc', padding: '4px 6px', textAlign: 'right' }}>{fmt(patti.expenses.commission)}</td></tr>
             )}
             {patti.expenses.otherList.filter(o => o.amount > 0).map((o) => (
               <tr key={o.id}>
@@ -741,7 +777,7 @@ function buildPrintHtml(
   const expRows = [
     patti.expenses.rent > 0 ? `<tr><td>Rent / Freight</td><td style="text-align:right">${fmt(patti.expenses.rent)}</td></tr>` : '',
     patti.expenses.loading > 0 ? `<tr><td>Loading / Unloading</td><td style="text-align:right">${fmt(patti.expenses.loading)}</td></tr>` : '',
-    patti.expenses.commission > 0 ? `<tr><td>Commission / Hamali</td><td style="text-align:right">${fmt(patti.expenses.commission)}</td></tr>` : '',
+    patti.expenses.commission > 0 ? `<tr><td>Commission</td><td style="text-align:right">${fmt(patti.expenses.commission)}</td></tr>` : '',
     ...patti.expenses.otherList
       .filter(o => o.amount > 0)
       .map(o => `<tr><td>${o.label || 'Other'}</td><td style="text-align:right">${fmt(o.amount)}</td></tr>`),
@@ -779,12 +815,24 @@ function buildPrintHtml(
     ${settings.address ? `<div style="font-size:11px;color:#333">${settings.address}</div>` : ''}
     ${settings.phone ? `<div style="font-size:11px">Ph: ${settings.phone}</div>` : ''}
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:10px;font-size:11.5px">
-    <div><strong>Bill No:</strong> ${patti.billNo}</div>
-    <div style="text-align:right"><strong>Date:</strong> ${dateStr}</div>
-    <div><strong>Party Name:</strong> ${patti.name}</div>
-    <div style="text-align:right"><strong>Vehicle No:</strong> ${patti.vehicleNo || '-'}</div>
-    ${patti.mark ? `<div><strong>Mark / Lot:</strong> ${patti.mark}</div>` : ''}
+  <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:10px;margin-bottom:10px;border:1px solid #000;padding:8px;font-size:11px">
+    <div>
+      <strong>BILL DETAILS:</strong>
+      <div style="margin-top:2px"><strong>Bill No:</strong> ${patti.billNo}</div>
+      <div><strong>Date:</strong> ${dateStr}</div>
+      <div><strong>Party Name:</strong> ${patti.name}</div>
+      ${patti.mark ? `<div><strong>Mark / Lot:</strong> ${patti.mark}</div>` : ''}
+    </div>
+    <div>
+      <strong>TRANSPORT DETAILS:</strong>
+      <div style="margin-top:2px"><strong>Vehicle No:</strong> ${patti.vehicleNo || '-'}</div>
+      ${patti.transporterName ? `<div><strong>Transporter:</strong> ${patti.transporterName}</div>` : ''}
+      ${patti.truckDriverName ? `<div><strong>Driver Name:</strong> ${patti.truckDriverName}</div>` : ''}
+      ${patti.driverMob ? `<div><strong>Driver Mob:</strong> ${patti.driverMob}</div>` : ''}
+      ${patti.truckOwnerMob ? `<div><strong>Owner Mob:</strong> ${patti.truckOwnerMob}</div>` : ''}
+      ${patti.freightRate ? `<div><strong>Freight Rate:</strong> &#8377;${patti.freightRate}</div>` : ''}
+      ${patti.advance ? `<div><strong>Advance Paid:</strong> &#8377;${patti.advance}</div>` : ''}
+    </div>
   </div>
   <table>
     <thead>

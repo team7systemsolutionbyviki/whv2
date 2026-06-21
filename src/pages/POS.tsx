@@ -628,7 +628,7 @@ export const POS: React.FC = () => {
               {filteredDisplayItems.length > 0 ? (
                 <div style={{ 
                   display: 'grid', 
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', 
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(215px, 1fr))', 
                   gap: '0.75rem',
                   maxHeight: '480px',
                   overflowY: 'auto',
@@ -645,11 +645,11 @@ export const POS: React.FC = () => {
                           display: 'flex',
                           flexDirection: 'column',
                           justifyContent: 'space-between',
-                          padding: '0.85rem',
+                          padding: '1rem',
                           borderRadius: 'var(--border-radius-md)',
                           cursor: 'pointer',
                           background: 'var(--bg-card)',
-                          minHeight: '135px',
+                          minHeight: '160px',
                           border: '1px solid var(--border-color)',
                           transition: 'all var(--transition-fast)'
                         }}
@@ -657,9 +657,9 @@ export const POS: React.FC = () => {
                         <div>
                           {/* Product Name */}
                           <h4 style={{ 
-                            fontSize: '0.85rem', 
-                            fontWeight: 600, 
-                            marginBottom: '0.4rem', 
+                            fontSize: '1rem', 
+                            fontWeight: 700, 
+                            marginBottom: '0.5rem', 
                             color: 'var(--text-primary)',
                             display: '-webkit-box',
                             WebkitLineClamp: 2,
@@ -671,26 +671,26 @@ export const POS: React.FC = () => {
                           </h4>
                           
                           {/* Mark & Lot Badge row */}
-                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
                             {item.variation && (
                               <span style={{ 
-                                fontSize: '0.65rem', 
-                                padding: '0.1rem 0.35rem', 
+                                fontSize: '0.85rem', 
+                                padding: '0.2rem 0.5rem', 
                                 background: 'var(--primary-light)', 
                                 color: 'var(--primary)', 
                                 borderRadius: '4px', 
-                                fontWeight: 700 
+                                fontWeight: 800 
                               }}>
                                 Mark: {item.mark}
                               </span>
                             )}
                             <span style={{ 
-                              fontSize: '0.65rem', 
-                              padding: '0.1rem 0.35rem', 
-                              background: 'rgba(255,255,255,0.06)', 
-                              color: 'var(--text-secondary)', 
+                              fontSize: '0.85rem', 
+                              padding: '0.2rem 0.5rem', 
+                              background: 'var(--warning-light)', 
+                              color: 'var(--warning)', 
                               borderRadius: '4px', 
-                              fontWeight: 500 
+                              fontWeight: 800 
                             }}>
                               Lot: {item.lotNo}
                             </span>
@@ -700,18 +700,18 @@ export const POS: React.FC = () => {
                         <div>
                           {/* Stock & Unit */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Stock:</span>
-                            <span className={`badge ${isLowStock ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.68rem', padding: '0.05rem 0.35rem' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Stock:</span>
+                            <span className={`badge ${isLowStock ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.78rem', padding: '0.1rem 0.45rem' }}>
                               {Number(item.currentStock.toFixed(3))} {item.unit}
                             </span>
                           </div>
 
                           {/* Price */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
                               ₹{item.salesPrice.toFixed(2)}
                             </span>
-                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                               per {item.unit}
                             </span>
                           </div>

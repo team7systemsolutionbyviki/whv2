@@ -8,22 +8,46 @@ import {
   Database,
   RefreshCw,
   Eye,
-  EyeOff
+  EyeOff,
+  Check
 } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { login, isMock } = useAuth();
+  const { login, isMock, forgotPassword } = useAuth();
   
   // Auth Form States
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleForgotPassword = async () => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    const emailTrimmed = email.trim();
+    if (!emailTrimmed) {
+      setErrorMsg("Please enter your Username or Email address in the field above first.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await forgotPassword(emailTrimmed);
+      if (!isMock) {
+        setSuccessMsg("Password reset email sent! Please check your inbox.");
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to reset password. Please check your username/email.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSuccessMsg(null);
     setIsLoading(true);
     try {
       await login(email, password);
@@ -140,6 +164,25 @@ export const Login: React.FC = () => {
             </div>
           )}
 
+          {/* Success Message Box */}
+          {successMsg && (
+            <div style={{
+              background: 'var(--success-light)',
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+              borderRadius: 'var(--border-radius-sm)',
+              padding: '0.75rem 1rem',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              color: 'var(--success)',
+              fontSize: '0.8rem'
+            }}>
+              <Check size={18} style={{ flexShrink: 0 }} />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
           {/* Form */}
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -160,10 +203,27 @@ export const Login: React.FC = () => {
             </div>
 
             <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Lock size={14} />
-                <span>Password</span>
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                  <Lock size={14} />
+                  <span>Password</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: 0
+                  }}
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <div style={{ position: 'relative' }}>
                 <input
                   type={showPassword ? "text" : "password"}

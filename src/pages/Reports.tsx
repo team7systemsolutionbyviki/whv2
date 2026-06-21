@@ -1027,7 +1027,7 @@ export const Reports: React.FC = () => {
       fileName = `Mark_Wise_Report_${new Date().toISOString().slice(0, 10)}.csv`;
 
     } else if (activeReport === 'patti') {
-      headers = ['Bill No', 'Date', 'Party Name', 'Vehicle No', 'Mark', 'Items Total (₹)', 'Rent', 'Loading', 'Commission', 'Other Expenses', 'Total Expenses (₹)', 'Less', 'Grand Total (₹)', 'Notes'];
+      headers = ['Bill No', 'Date', 'Party Name', 'Vehicle No', 'Transporter Name', 'Truck Driver Name', 'Driver Mobile', 'Truck Owner Mobile', 'Freight Rate (₹)', 'Advance Paid (₹)', 'Mark', 'Items Total (₹)', 'Rent', 'Loading', 'Commission', 'Other Expenses', 'Total Expenses (₹)', 'Less', 'Grand Total (₹)', 'Notes'];
       rows = sortedPattis.map(p => {
         const items = p.items.reduce((s, i) => s + i.amount, 0);
         const exp = p.expenses.rent + p.expenses.loading + p.expenses.commission + p.expenses.otherList.reduce((s,o)=>s+o.amount,0);
@@ -1035,7 +1035,10 @@ export const Reports: React.FC = () => {
         const otherStr = p.expenses.otherList.map(o=>`${o.label||'Other'}:${o.amount.toFixed(2)}`).join(' | ');
         return [
           p.billNo, new Date(p.date).toLocaleDateString('en-IN'),
-          p.name, p.vehicleNo||'-', p.mark||'-',
+          p.name, p.vehicleNo||'-',
+          p.transporterName||'-', p.truckDriverName||'-', p.driverMob||'-', p.truckOwnerMob||'-',
+          p.freightRate ? p.freightRate.toFixed(2) : '0.00', p.advance ? p.advance.toFixed(2) : '0.00',
+          p.mark||'-',
           items.toFixed(2), p.expenses.rent.toFixed(2), p.expenses.loading.toFixed(2),
           p.expenses.commission.toFixed(2), otherStr || '0',
           exp.toFixed(2), p.lessAmount.toFixed(2), grand.toFixed(2), p.notes||''

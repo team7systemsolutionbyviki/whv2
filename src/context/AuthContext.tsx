@@ -5,7 +5,8 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  getAuth
+  getAuth,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { auth, isMockMode, firebaseConfig } from '../utils/firebase';
 import { DB } from '../utils/db';
@@ -51,6 +52,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
   updateConfig: (config: any) => void;
   resetConfig: () => void;
   createAppUser: (email: string, password: string, role: 'admin' | 'staff') => Promise<void>;
@@ -239,6 +241,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const forgotPassword = async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isMock && auth) {
+      try {
+        await sendPasswordResetEmail(auth, normalizedEmail);
+      } catch (error: any) {
+        throw error;
+      }
+    } else {
+      const appUsersStr = localStorage.getItem('app_users') || '[]';
+      const appUsers = JSON.parse(appUsersStr) as { email: string, password?: string, role: 'admin' | 'staff', uid: string }[];
+      
+      const mockUsersStr = localStorage.getItem('mock_users') || '[]';
+      const mockUsers = JSON.parse(mockUsersStr) as { email: string, password?: string, role?: 'admin' | 'staff', uid: string }[];
+      
+      const allMockUsers = [...appUsers, ...mockUsers];
+      const existing = allMockUsers.find(u => u.email.toLowerCase() === normalizedEmail);
+
+      if (existing) {
+        alert(`[MOCK MODE RESET]: Your password is "${existing.password}". Please use it to log in.`);
+      } else if (normalizedEmail === 'viki' || normalizedEmail === 'viki@wolsales.com') {
+        alert(`[MOCK MODE RESET]: Super Admin bypass password is "1101viki".`);
+      } else if (normalizedEmail === 'admin@wolsales.com') {
+        alert(`[MOCK MODE RESET]: Seed admin password is "admin123".`);
+      } else {
+        throw new Error("No user registered with this username or email.");
+      }
+    }
+  };
+
   const logout = async () => {
     const userEmail = user?.email || 'Unknown';
     await DB.createAutoBackup(userEmail, 'logout');
@@ -324,6 +356,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login, 
       register, 
       logout, 
+      forgotPassword,
       updateConfig, 
       resetConfig,
       createAppUser,

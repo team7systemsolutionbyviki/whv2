@@ -49,8 +49,14 @@ export const Purchases: React.FC = () => {
   // Vehicle & Delivery details
   const [vehicleNo, setVehicleNo] = useState('');
   const [deliveryPersonPhone, setDeliveryPersonPhone] = useState('');
+  const [transporterName, setTransporterName] = useState('');
+  const [truckOwnerMob, setTruckOwnerMob] = useState('');
+  const [driverMob, setDriverMob] = useState('');
+  const [truckDriverName, setTruckDriverName] = useState('');
   const [lotNo, setLotNo] = useState('');
   const [vehicleMark, setVehicleMark] = useState('');
+  const [freightRate, setFreightRate] = useState<number>(0);
+  const [advance, setAdvance] = useState<number>(0);
 
   const formatPurchaseUnit = (unitStr: string) => {
     const u = (unitStr || '').toLowerCase().trim();
@@ -376,9 +382,15 @@ export const Purchases: React.FC = () => {
       discount,
       coolie,
       vehicleNo: vehicleNo || undefined,
-      deliveryPersonPhone: deliveryPersonPhone || undefined,
+      deliveryPersonPhone: driverMob || deliveryPersonPhone || undefined,
+      transporterName: transporterName || undefined,
+      truckOwnerMob: truckOwnerMob || undefined,
+      driverMob: driverMob || undefined,
+      truckDriverName: truckDriverName || undefined,
       lotNo: lotNo || undefined,
       vehicleMark: vehicleMark || undefined,
+      freightRate: freightRate || undefined,
+      advance: advance || undefined,
       total: finalTotal,
       paymentStatus,
       dueAmount: paymentStatus === 'Due' ? finalTotal : 0
@@ -396,8 +408,14 @@ export const Purchases: React.FC = () => {
     setCoolie(0);
     setVehicleNo('');
     setDeliveryPersonPhone('');
+    setTransporterName('');
+    setTruckOwnerMob('');
+    setDriverMob('');
+    setTruckDriverName('');
     setLotNo('');
     setVehicleMark('');
+    setFreightRate(0);
+    setAdvance(0);
     showToast(`Purchase ${invoiceNo} recorded. Stock auto-updated!`, 'success');
   };
 
@@ -697,8 +715,14 @@ export const Purchases: React.FC = () => {
       refNo: p.invoiceNo,
       vehicleNo: p.vehicleNo || undefined,
       deliveryPersonPhone: p.deliveryPersonPhone || undefined,
+      transporterName: p.transporterName || undefined,
+      truckOwnerMob: p.truckOwnerMob || undefined,
+      driverMob: p.driverMob || undefined,
+      truckDriverName: p.truckDriverName || undefined,
       lotNo: p.lotNo || undefined,
       vehicleMark: p.vehicleMark || undefined,
+      freightRate: p.freightRate || undefined,
+      advance: p.advance || undefined,
       customerName: undefined as string | undefined,
       items: p.items.map(item => ({
         productId: item.productId,
@@ -730,6 +754,8 @@ export const Purchases: React.FC = () => {
       deliveryPersonPhone: undefined as string | undefined,
       lotNo: undefined as string | undefined,
       vehicleMark: undefined as string | undefined,
+      freightRate: undefined as number | undefined,
+      advance: undefined as number | undefined,
       customerName: undefined as string | undefined,
       items: [] as any[],
       discount: 0,
@@ -751,6 +777,8 @@ export const Purchases: React.FC = () => {
       deliveryPersonPhone: undefined as string | undefined,
       lotNo: undefined as string | undefined,
       vehicleMark: undefined as string | undefined,
+      freightRate: undefined as number | undefined,
+      advance: undefined as number | undefined,
       customerName: s.customerName,
       items: s.items.map(item => {
         const itemDiscount = s.subtotal > 0 ? (item.total / s.subtotal) * s.discount : 0;
@@ -1132,28 +1160,61 @@ export const Purchases: React.FC = () => {
 
               <div className="grid-2">
                 <div className="form-group">
-                  <label>Vehicle Number</label>
+                  <label>Licence Plate No / Vehicle No</label>
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="e.g. MH-12-PQ-9999"
+                    placeholder="e.g. TN-93-B-8638"
                     value={vehicleNo}
                     onChange={(e) => setVehicleNo(e.target.value)}
                   />
                 </div>
                 <div className="form-group">
-                  <label>Delivery Person Phone</label>
+                  <label>Transporter Name</label>
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="e.g. 9800012345"
-                    value={deliveryPersonPhone}
-                    onChange={(e) => setDeliveryPersonPhone(e.target.value)}
+                    placeholder="e.g. MAHALAXMI"
+                    value={transporterName}
+                    onChange={(e) => setTransporterName(e.target.value)}
                   />
                 </div>
               </div>
 
               <div className="grid-2">
+                <div className="form-group">
+                  <label>Truck Driver Name</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Satish kumar"
+                    value={truckDriverName}
+                    onChange={(e) => setTruckDriverName(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Driver Mobile (Driver Mob)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. 9003490996"
+                    value={driverMob}
+                    onChange={(e) => setDriverMob(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid-2">
+                <div className="form-group">
+                  <label>Truck Owner Mobile</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. 9845012345"
+                    value={truckOwnerMob}
+                    onChange={(e) => setTruckOwnerMob(e.target.value)}
+                  />
+                </div>
                 <div className="form-group">
                   <label>Lot Number</label>
                   <input
@@ -1164,6 +1225,9 @@ export const Purchases: React.FC = () => {
                     onChange={(e) => setLotNo(e.target.value)}
                   />
                 </div>
+              </div>
+
+              <div className="grid-2">
                 <div className="form-group">
                   <label>Vehicle Mark</label>
                   <input
@@ -1174,6 +1238,30 @@ export const Purchases: React.FC = () => {
                     onChange={(e) => setVehicleMark(e.target.value)}
                   />
                 </div>
+                <div className="form-group">
+                  <label>Freight Rate (₹)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    placeholder="e.g. 150"
+                    value={freightRate || ''}
+                    onChange={(e) => setFreightRate(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+
+              <div className="grid-2">
+                <div className="form-group">
+                  <label>Advance Amount (₹)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    placeholder="e.g. 2000"
+                    value={advance || ''}
+                    onChange={(e) => setAdvance(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+                <div></div>
               </div>
 
               <div className="grid-2">
@@ -1191,7 +1279,7 @@ export const Purchases: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label>Coolie Charges (₹)</label>
+                  <label>Coolie / Freight Charges (₹)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -1218,7 +1306,7 @@ export const Purchases: React.FC = () => {
                 )}
                 {coolie > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--info)' }}>
-                    <span>Coolie Charges:</span>
+                    <span>Coolie / Freight Charges:</span>
                     <span>+ ₹{coolie.toFixed(2)}</span>
                   </div>
                 )}
@@ -1660,7 +1748,7 @@ export const Purchases: React.FC = () => {
                                           <div style={{ fontStyle: 'italic', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
                                             Subtotal: ₹{t.subtotal.toFixed(2)}
                                             {t.discount > 0 && ` | Discount: -₹${t.discount.toFixed(2)}`}
-                                            {t.coolie > 0 && ` | Coolie: +₹${t.coolie.toFixed(2)}`}
+                                            {t.coolie > 0 && ` | Coolie/Freight: +₹${t.coolie.toFixed(2)}`}
                                           </div>
                                         )}
                                         {t.type === 'in' && (t.vehicleNo || t.lotNo || t.vehicleMark) && (
@@ -2024,9 +2112,14 @@ export const Purchases: React.FC = () => {
                     <div>
                       <h4 style={{ fontWeight: 600, borderBottom: '1px solid #ddd', paddingBottom: '0.2rem', marginBottom: '0.4rem', fontSize: '0.75rem', color: '#4b5563' }}>TRANSPORT & DELIVERY:</h4>
                       <p style={{ margin: '0.25rem 0' }}><strong>Vehicle No:</strong> {selectedPurchase.vehicleNo || 'Not Specified'}</p>
-                      <p style={{ margin: '0.25rem 0' }}><strong>Delivery Person Phone:</strong> {selectedPurchase.deliveryPersonPhone || 'Not Specified'}</p>
+                      {selectedPurchase.transporterName && <p style={{ margin: '0.25rem 0' }}><strong>Transporter Name:</strong> {selectedPurchase.transporterName}</p>}
+                      {selectedPurchase.truckDriverName && <p style={{ margin: '0.25rem 0' }}><strong>Driver Name:</strong> {selectedPurchase.truckDriverName}</p>}
+                      {(selectedPurchase.driverMob || selectedPurchase.deliveryPersonPhone) && <p style={{ margin: '0.25rem 0' }}><strong>Driver Phone (Mob):</strong> {selectedPurchase.driverMob || selectedPurchase.deliveryPersonPhone}</p>}
+                      {selectedPurchase.truckOwnerMob && <p style={{ margin: '0.25rem 0' }}><strong>Truck Owner Mob:</strong> {selectedPurchase.truckOwnerMob}</p>}
                       <p style={{ margin: '0.25rem 0' }}><strong>Lot No:</strong> {selectedPurchase.lotNo || 'Not Specified'}</p>
                       <p style={{ margin: '0.25rem 0' }}><strong>Vehicle Mark:</strong> {selectedPurchase.vehicleMark || 'Not Specified'}</p>
+                      {selectedPurchase.freightRate !== undefined && <p style={{ margin: '0.25rem 0' }}><strong>Freight Rate:</strong> ₹{selectedPurchase.freightRate}</p>}
+                      {selectedPurchase.advance !== undefined && <p style={{ margin: '0.25rem 0' }}><strong>Advance Paid:</strong> ₹{selectedPurchase.advance}</p>}
                     </div>
                   </div>
 
@@ -2071,7 +2164,7 @@ export const Purchases: React.FC = () => {
                       )}
                       {selectedPurchase.coolie !== undefined && selectedPurchase.coolie > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>Coolie Charges:</span>
+                          <span>Coolie / Freight Charges:</span>
                           <span>+ ₹{selectedPurchase.coolie.toFixed(2)}</span>
                         </div>
                       )}
@@ -2127,9 +2220,14 @@ export const Purchases: React.FC = () => {
             <div>
               <strong>TRANSPORT & DELIVERY:</strong>
               <div>Vehicle No: {selectedPurchase.vehicleNo || 'Not Specified'}</div>
-              <div>Delivery Phone: {selectedPurchase.deliveryPersonPhone || 'Not Specified'}</div>
+              {selectedPurchase.transporterName && <div>Transporter: {selectedPurchase.transporterName}</div>}
+              {selectedPurchase.truckDriverName && <div>Driver Name: {selectedPurchase.truckDriverName}</div>}
+              {(selectedPurchase.driverMob || selectedPurchase.deliveryPersonPhone) && <div>Driver Phone: {selectedPurchase.driverMob || selectedPurchase.deliveryPersonPhone}</div>}
+              {selectedPurchase.truckOwnerMob && <div>Owner Phone: {selectedPurchase.truckOwnerMob}</div>}
               <div>Lot No: {selectedPurchase.lotNo || 'Not Specified'}</div>
               <div>Vehicle Mark: {selectedPurchase.vehicleMark || 'Not Specified'}</div>
+              {selectedPurchase.freightRate !== undefined && <div>Freight Rate: ₹{selectedPurchase.freightRate}</div>}
+              {selectedPurchase.advance !== undefined && <div>Advance Paid: ₹{selectedPurchase.advance}</div>}
             </div>
           </div>
 
@@ -2172,7 +2270,7 @@ export const Purchases: React.FC = () => {
               )}
               {selectedPurchase.coolie !== undefined && selectedPurchase.coolie > 0 && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Coolie Charges:</span>
+                  <span>Coolie / Freight Charges:</span>
                   <span>+ ₹{selectedPurchase.coolie.toFixed(2)}</span>
                 </div>
               )}
@@ -2280,7 +2378,7 @@ export const Purchases: React.FC = () => {
                               <div style={{ fontStyle: 'italic', color: '#777', fontSize: '8.5px', marginTop: '1px' }}>
                                 Subtotal: ₹{t.subtotal.toFixed(2)}
                                 {t.discount > 0 && ` | Discount: -₹${t.discount.toFixed(2)}`}
-                                {t.coolie > 0 && ` | Coolie: +₹${t.coolie.toFixed(2)}`}
+                                {t.coolie > 0 && ` | Coolie/Freight: +₹${t.coolie.toFixed(2)}`}
                               </div>
                             )}
                             {t.type === 'in' && (t.vehicleNo || t.lotNo || t.vehicleMark) && (

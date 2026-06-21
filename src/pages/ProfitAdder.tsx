@@ -39,7 +39,7 @@ export const ProfitAdder: React.FC = () => {
 
   // Adjustment form states
   const [priceTarget, setPriceTarget] = useState<'sales' | 'purchase' | 'both'>('sales');
-  const [adjustMode, setAdjustMode] = useState<'flat' | 'percent' | 'margin'>('margin');
+  const [adjustMode, setAdjustMode] = useState<'flat' | 'percent' | 'margin' | 'set'>('margin');
   const [adjustValue, setAdjustValue] = useState<number>(10);
 
   // List unique categories for dropdown
@@ -169,6 +169,8 @@ export const ProfitAdder: React.FC = () => {
         previewPurchase += adjustValue;
       } else if (adjustMode === 'percent') {
         previewPurchase *= (1 + adjustValue / 100);
+      } else if (adjustMode === 'set') {
+        previewPurchase = adjustValue;
       }
     }
 
@@ -181,6 +183,8 @@ export const ProfitAdder: React.FC = () => {
       } else if (adjustMode === 'margin') {
         // margin sets Sales Price = Purchase Price * (1 + margin / 100)
         previewSales = previewPurchase * (1 + adjustValue / 100);
+      } else if (adjustMode === 'set') {
+        previewSales = adjustValue;
       }
     }
 
@@ -486,8 +490,8 @@ export const ProfitAdder: React.FC = () => {
               {/* Adjustment Mode */}
               <div className="form-group">
                 <label>2. Choose Price Adjustment Rule</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginTop: '0.25rem' }}>
-                  {(['flat', 'percent', 'margin'] as const).map(mode => {
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem', marginTop: '0.25rem' }}>
+                  {(['flat', 'percent', 'margin', 'set'] as const).map(mode => {
                     const isDisabled = priceTarget === 'purchase' && mode === 'margin';
                     return (
                       <button
@@ -497,28 +501,34 @@ export const ProfitAdder: React.FC = () => {
                         className={`btn ${adjustMode === mode ? 'btn-primary' : 'btn-secondary'}`}
                         style={{ 
                           padding: '0.5rem 0', 
-                          fontSize: '0.8rem',
+                          fontSize: '0.75rem',
                           opacity: isDisabled ? 0.4 : 1,
                           cursor: isDisabled ? 'not-allowed' : 'pointer'
                         }}
                         disabled={isDisabled}
                       >
                         {mode === 'flat' && (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}>
-                            <DollarSign size={13} />
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.1rem' }}>
+                            <DollarSign size={11} />
                             <span>Flat (₹)</span>
                           </div>
                         )}
                         {mode === 'percent' && (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}>
-                            <Percent size={13} />
-                            <span>Percent (%)</span>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.1rem' }}>
+                            <Percent size={11} />
+                            <span>Pct (%)</span>
                           </div>
                         )}
                         {mode === 'margin' && (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}>
-                            <TrendingUp size={13} />
-                            <span>Margin (%)</span>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.1rem' }}>
+                            <TrendingUp size={11} />
+                            <span>Margin</span>
+                          </div>
+                        )}
+                        {mode === 'set' && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.1rem' }}>
+                            <CheckCircle size={11} />
+                            <span>Set (₹)</span>
                           </div>
                         )}
                       </button>
@@ -533,6 +543,7 @@ export const ProfitAdder: React.FC = () => {
                   {adjustMode === 'flat' && '3. Enter Flat Adjust Value (e.g. 5 to add ₹5, -10 to discount ₹10)'}
                   {adjustMode === 'percent' && '3. Enter Percentage Value (e.g. 10 for +10% price, -5 for -5% discount)'}
                   {adjustMode === 'margin' && '3. Enter Target Profit Markup on Cost (e.g. 20 sets Sales = Cost + 20%)'}
+                  {adjustMode === 'set' && '3. Enter Direct Price Value (e.g. 150 to set price to ₹150.00)'}
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.25rem' }}>
                   <input
@@ -568,6 +579,7 @@ export const ProfitAdder: React.FC = () => {
                     {adjustMode === 'flat' && `Add ₹${adjustValue.toFixed(2)}`}
                     {adjustMode === 'percent' && `Adjust by ${adjustValue}%`}
                     {adjustMode === 'margin' && `Set Sales Price to Cost + ${adjustValue}% Margin`}
+                    {adjustMode === 'set' && `Set Price to ₹${adjustValue.toFixed(2)}`}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', color: 'var(--warning)', fontSize: '0.75rem' }}>

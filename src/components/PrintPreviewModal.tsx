@@ -255,8 +255,6 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <p style={{ margin: '0 0 2px 0' }}>PH: {settings.phone}</p>
             {settings.gstin && <p style={{ margin: '0 0 4px 0', fontWeight: 'bold' }}>GSTIN: {settings.gstin}</p>}
             <div className="print-divider"></div>
-            <h4 style={{ fontSize: '11px', margin: '2px 0' }}>SALES RECEIPT</h4>
-            <div className="print-divider"></div>
           </div>
 
           <div style={{ fontSize: '9px', margin: '4px 0' }}>
