@@ -3,9 +3,7 @@ import { createPortal } from 'react-dom';
 import { useApp, ActiveTab } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { 
-  LayoutDashboard, 
   ShoppingCart, 
-  Users, 
   Truck, 
   Warehouse, 
   BarChart3, 
@@ -20,7 +18,8 @@ import {
   ClipboardList,
   Receipt,
   X,
-  Printer
+  Printer,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -79,12 +78,11 @@ export const Sidebar: React.FC = () => {
   const lowStockCount = products.filter(p => p.currentStock <= p.minStockAlert).length;
 
   const menuItems = [
-    { id: 'dashboard' as ActiveTab, name: 'Dashboard', icon: LayoutDashboard },
-    { id: 'products' as ActiveTab, name: 'Products', icon: ShoppingBag },
     { id: 'pos' as ActiveTab, name: 'POS Sales', icon: ShoppingCart },
-    { id: 'wholesale' as ActiveTab, name: 'Wholesale', icon: Users },
+    { id: 'products' as ActiveTab, name: 'Products', icon: ShoppingBag },
     { id: 'customers' as ActiveTab, name: 'Customers', icon: UserCheck },
     { id: 'purchases' as ActiveTab, name: 'Purchases', icon: Truck },
+    { id: 'purchase_commission_goods' as ActiveTab, name: 'Commission Goods', icon: FileSpreadsheet },
     { 
       id: 'inventory' as ActiveTab, 
       name: 'Inventory', 
@@ -103,7 +101,7 @@ export const Sidebar: React.FC = () => {
 
   const filteredMenuItems = menuItems.filter(item => {
     if (userRole === 'staff') {
-      return ['products', 'pos', 'wholesale'].includes(item.id);
+      return ['products', 'pos'].includes(item.id);
     }
     return true;
   });

@@ -3,7 +3,7 @@ import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransacti
 import { rtdb, isMockMode } from '../utils/firebase';
 import { ref, onValue } from 'firebase/database';
 
-export type ActiveTab = 'dashboard' | 'products' | 'pos' | 'wholesale' | 'purchases' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers' | 'patti' | 'expenses';
+export type ActiveTab = 'products' | 'pos' | 'wholesale' | 'purchases' | 'purchase_commission_goods' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers' | 'patti' | 'expenses';
 
 export interface CartItem {
   product: Product;
@@ -13,6 +13,8 @@ export interface CartItem {
   variation?: ProductVariation;
   customWeight?: number; // for custom weight overrides in KG
   bags?: number; // manually inputted number of bags
+  lotNo?: string;
+  commissionPurchaseId?: string;
 }
 
 export interface HeldCart {
@@ -53,13 +55,13 @@ interface AppContextType {
   
   // POS Carts
   retailCart: CartItem[];
-  addToRetailCart: (product: Product, qty?: number, variation?: ProductVariation) => void;
-  removeFromRetailCart: (productId: string, variationId?: string) => void;
-  updateRetailQty: (productId: string, qty: number, variationId?: string) => void;
-  updateRetailPrice: (productId: string, price: number, variationId?: string) => void;
-  updateRetailUnit: (productId: string, unit: string, variationId?: string) => void;
-  updateRetailWeight: (productId: string, weight: number, variationId?: string) => void;
-  updateRetailBags: (productId: string, bags: number, variationId?: string) => void;
+  addToRetailCart: (product: Product, qty?: number, variation?: ProductVariation, lotNo?: string, commissionPurchaseId?: string) => void;
+  removeFromRetailCart: (productId: string, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => void;
+  updateRetailQty: (productId: string, qty: number, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => void;
+  updateRetailPrice: (productId: string, price: number, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => void;
+  updateRetailUnit: (productId: string, unit: string, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => void;
+  updateRetailWeight: (productId: string, weight: number, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => void;
+  updateRetailBags: (productId: string, bags: number, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => void;
   clearRetailCart: () => void;
   retailDiscount: number; // flat discount
   setRetailDiscount: (disc: number) => void;
@@ -99,7 +101,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation & Theme
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('pos');
   const [darkMode, setDarkModeState] = useState<boolean>(true);
 
   // Database
@@ -310,10 +312,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // RETAIL CART LOGIC
-  const addToRetailCart = (product: Product, qty = 1, variation?: ProductVariation) => {
+  const addToRetailCart = (product: Product, qty = 1, variation?: ProductVariation, lotNo?: string, commissionPurchaseId?: string) => {
     let addedSuccessfully = true;
     setRetailCart((prev) => {
-      const idx = prev.findIndex((item) => item.product.id === product.id && item.variation?.id === variation?.id);
+      const idx = prev.findIndex((item) => 
+        item.product.id === product.id && 
+        item.variation?.id === variation?.id &&
+        item.lotNo === lotNo &&
+        item.commissionPurchaseId === commissionPurchaseId
+      );
       const stockLimit = variation ? variation.currentStock : product.currentStock;
 
       if (idx >= 0) {
@@ -334,7 +341,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return prev;
       }
       const addedQty = Math.min(qty, stockLimit);
-      return [...prev, { product, qty: addedQty, variation, customUnit: variation?.unit }];
+      return [...prev, { product, qty: addedQty, variation, customUnit: variation?.unit, lotNo, commissionPurchaseId }];
     });
     
     if (addedSuccessfully) {
@@ -343,14 +350,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const removeFromRetailCart = (productId: string, variationId?: string) => {
-    setRetailCart((prev) => prev.filter((item) => !(item.product.id === productId && item.variation?.id === variationId)));
+  const removeFromRetailCart = (productId: string, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => {
+    setRetailCart((prev) => prev.filter((item) => !(item.product.id === productId && item.variation?.id === variationId && item.lotNo === lotNo && item.commissionPurchaseId === commissionPurchaseId)));
   };
 
-  const updateRetailQty = (productId: string, qty: number, variationId?: string) => {
+  const updateRetailQty = (productId: string, qty: number, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => {
     if (qty < 0) return;
     setRetailCart((prev) => {
-      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId && item.lotNo === lotNo && item.commissionPurchaseId === commissionPurchaseId);
       if (idx >= 0) {
         const prod = prev[idx].product;
         const stockLimit = prev[idx].variation ? prev[idx].variation!.currentStock : prod.currentStock;
@@ -368,10 +375,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateRetailWeight = (productId: string, weight: number, variationId?: string) => {
+  const updateRetailWeight = (productId: string, weight: number, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => {
     if (weight < 0) return;
     setRetailCart((prev) => {
-      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId && item.lotNo === lotNo && item.commissionPurchaseId === commissionPurchaseId);
       if (idx >= 0) {
         const updated = [...prev];
         const item = updated[idx];
@@ -416,10 +423,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateRetailBags = (productId: string, bags: number, variationId?: string) => {
+  const updateRetailBags = (productId: string, bags: number, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => {
     if (bags < 0) return;
     setRetailCart((prev) => {
-      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId && item.lotNo === lotNo && item.commissionPurchaseId === commissionPurchaseId);
       if (idx >= 0) {
         const updated = [...prev];
         const item = updated[idx];
@@ -468,9 +475,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateRetailPrice = (productId: string, price: number, variationId?: string) => {
+  const updateRetailPrice = (productId: string, price: number, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => {
     setRetailCart((prev) => {
-      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId && item.lotNo === lotNo && item.commissionPurchaseId === commissionPurchaseId);
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx].customPrice = price;
@@ -480,9 +487,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateRetailUnit = (productId: string, unit: string, variationId?: string) => {
+  const updateRetailUnit = (productId: string, unit: string, variationId?: string, lotNo?: string, commissionPurchaseId?: string) => {
     setRetailCart((prev) => {
-      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId);
+      const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId && item.lotNo === lotNo && item.commissionPurchaseId === commissionPurchaseId);
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx].customUnit = unit;

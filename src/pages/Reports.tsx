@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
-import { DB, Sale, Purchase, PattiRecord, Expense } from '../utils/db';
+import { DB, Sale, Purchase, PattiRecord, Expense, CommissionPurchase } from '../utils/db';
 import { 
   BarChart3, 
   Download, 
@@ -18,9 +18,25 @@ import {
   Receipt
 } from 'lucide-react';
 
+const getPattiExpenses = (expenses: any): number => {
+  const base = expenses.rent + expenses.loading + expenses.commission;
+  const extra = 
+    (expenses.marketFee || 0) +
+    (expenses.levi || 0) +
+    (expenses.associationFund || 0) +
+    (expenses.saleExp || 0) +
+    (expenses.loadingHamali || 0) +
+    (expenses.cashAdvance || 0) +
+    (expenses.phoneExp || 0) +
+    (expenses.aadatCommission || 0) +
+    (expenses.otherExpense || 0);
+  const other = expenses.otherList ? expenses.otherList.reduce((s: number, o: any) => s + (o.amount || 0), 0) : 0;
+  return base + extra + other;
+};
+
 export const Reports: React.FC = () => {
-  const { sales, purchases, products, settings, dealers, suppliers, pattis, expenses } = useApp();
-  const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'expenses' | 'stock' | 'mark_wise' | 'staff_wise' | 'patti'>('sales');
+  const { sales, purchases, products, settings, dealers, suppliers, pattis, expenses, stockHistory } = useApp();
+  const [activeReport, setActiveReport] = useState<'sales' | 'purchases' | 'sales_profit' | 'expenses' | 'stock' | 'mark_wise' | 'staff_wise' | 'patti' | 'commission_goods'>('sales');
 
   // General Report Sorting States
   const [salesSortField, setSalesSortField] = useState<string>('date');
@@ -51,6 +67,10 @@ export const Reports: React.FC = () => {
 
   const [expensesSortField, setExpensesSortField] = useState<'date' | 'category' | 'amount'>('date');
   const [expensesSortAsc, setExpensesSortAsc] = useState<boolean>(false);
+
+  // Commission goods report states
+  const [commissionSortField, setCommissionSortField] = useState<string>('mark');
+  const [commissionSortAsc, setCommissionSortAsc] = useState<boolean>(true);
 
 
 
@@ -92,6 +112,9 @@ export const Reports: React.FC = () => {
   const [dealerFilter, setDealerFilter] = useState<string>('all');
   const [productFilter, setProductFilter] = useState<string>('all');
   const [staffFilter, setStaffFilter] = useState<string>('all');
+  const [markFilter, setMarkFilter] = useState<string>('');
+  const [lotFilter, setLotFilter] = useState<string>('');
+  const [vehicleFilter, setVehicleFilter] = useState<string>('');
 
   // Printing State
   const [isPrinting, setIsPrinting] = useState(false);
@@ -151,10 +174,31 @@ export const Reports: React.FC = () => {
 
   const filteredSales = rawFilteredSales
     .map(s => {
-      if (productFilter === 'all') return s;
+      let items = s.items;
+      if (productFilter !== 'all') {
+        items = items.filter(item => item.productId === productFilter);
+      }
+      if (markFilter) {
+        items = items.filter(item => item.variationMark && item.variationMark.toLowerCase().includes(markFilter.toLowerCase()));
+      }
+      if (lotFilter) {
+        items = items.filter(item => {
+          const directLot = item.lotNo || '';
+          const traceLot = getProductPurchaseDetails(item.productId, item.variationId).lotNo;
+          return directLot.toLowerCase().includes(lotFilter.toLowerCase()) || 
+                 (traceLot !== '-' && traceLot.toLowerCase().includes(lotFilter.toLowerCase()));
+        });
+      }
+      if (vehicleFilter) {
+        items = items.filter(item => {
+          const trace = getProductPurchaseDetails(item.productId, item.variationId);
+          return (trace.vehicleNo !== '-' && trace.vehicleNo.toLowerCase().includes(vehicleFilter.toLowerCase())) ||
+                 (trace.vehicleMark !== '-' && trace.vehicleMark.toLowerCase().includes(vehicleFilter.toLowerCase()));
+        });
+      }
       return {
         ...s,
-        items: s.items.filter(item => item.productId === productFilter)
+        items
       };
     })
     .filter(s => s.items.length > 0);
@@ -162,10 +206,35 @@ export const Reports: React.FC = () => {
   const filteredPurchases = purchases
     .filter(p => filterDateMatch(p.date))
     .map(p => {
-      if (productFilter === 'all') return p;
+      let items = p.items;
+      if (productFilter !== 'all') {
+        items = items.filter(item => item.productId === productFilter);
+      }
+      if (markFilter) {
+        items = items.filter(item => {
+          const itemMark = item.variationMark || '';
+          const parentMark = p.vehicleMark || '';
+          return itemMark.toLowerCase().includes(markFilter.toLowerCase()) ||
+                 parentMark.toLowerCase().includes(markFilter.toLowerCase());
+        });
+      }
+      if (lotFilter) {
+        const pLot = p.lotNo || '';
+        if (!pLot.toLowerCase().includes(lotFilter.toLowerCase())) {
+          items = [];
+        }
+      }
+      if (vehicleFilter) {
+        const pVeh = p.vehicleNo || '';
+        const pMark = p.vehicleMark || '';
+        if (!pVeh.toLowerCase().includes(vehicleFilter.toLowerCase()) && 
+            !pMark.toLowerCase().includes(vehicleFilter.toLowerCase())) {
+          items = [];
+        }
+      }
       return {
         ...p,
-        items: p.items.filter(item => item.productId === productFilter)
+        items
       };
     })
     .filter(p => p.items.length > 0);
@@ -250,7 +319,42 @@ export const Reports: React.FC = () => {
         variationMark: undefined as string | undefined
       }];
     }
-  }).filter(item => productFilter === 'all' || item.id.split('-')[0] === productFilter);
+  }).filter(item => {
+    const [prodId, varId] = item.id.split('-');
+    
+    // Product Filter
+    if (productFilter !== 'all' && prodId !== productFilter) return false;
+    
+    // Mark Filter
+    if (markFilter) {
+      const vMark = item.variationMark || '';
+      const trace = getProductPurchaseDetails(prodId, varId);
+      const traceMark = trace.vehicleMark || '';
+      if (!vMark.toLowerCase().includes(markFilter.toLowerCase()) && 
+          !traceMark.toLowerCase().includes(markFilter.toLowerCase())) {
+        return false;
+      }
+    }
+    
+    // Lot Filter
+    if (lotFilter) {
+      const trace = getProductPurchaseDetails(prodId, varId);
+      if (!trace.lotNo.toLowerCase().includes(lotFilter.toLowerCase())) {
+        return false;
+      }
+    }
+    
+    // Vehicle Filter
+    if (vehicleFilter) {
+      const trace = getProductPurchaseDetails(prodId, varId);
+      if (!trace.vehicleNo.toLowerCase().includes(vehicleFilter.toLowerCase()) &&
+          !trace.vehicleMark.toLowerCase().includes(vehicleFilter.toLowerCase())) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
 
   const totalStockQty = stockItemsValuation.reduce((sum, item) => sum + item.currentStock, 0);
   const totalStockCostVal = stockItemsValuation.reduce((sum, item) => sum + (item.currentStock * item.purchasePrice), 0);
@@ -807,6 +911,15 @@ export const Reports: React.FC = () => {
     }
   };
 
+  const handleCommissionSort = (field: string) => {
+    if (commissionSortField === field) {
+      setCommissionSortAsc(!commissionSortAsc);
+    } else {
+      setCommissionSortField(field);
+      setCommissionSortAsc(true);
+    }
+  };
+
   // Patti report filter + sort
   const filteredPattis = React.useMemo(() => {
     const today = new Date();
@@ -829,17 +942,28 @@ export const Reports: React.FC = () => {
       const nameOk = !pattiNameFilter || p.name.toLowerCase().includes(pattiNameFilter.toLowerCase());
       const vehicleOk = !pattiVehicleFilter || (p.vehicleNo || '').toLowerCase().includes(pattiVehicleFilter.toLowerCase());
       const markOk = !pattiMarkFilter || (p.mark || '').toLowerCase().includes(pattiMarkFilter.toLowerCase());
-      return dateOk && nameOk && vehicleOk && markOk;
+      
+      const globalVehicleOk = !vehicleFilter || (p.vehicleNo || '').toLowerCase().includes(vehicleFilter.toLowerCase());
+      const globalMarkOk = !markFilter || (p.mark || '').toLowerCase().includes(markFilter.toLowerCase());
+      const globalLotOk = !lotFilter || (p.mark || '').toLowerCase().includes(lotFilter.toLowerCase()) || (p.billNo || '').toLowerCase().includes(lotFilter.toLowerCase());
+      
+      const productMatches = productFilter === 'all' || p.items.some(item => {
+        const selectedProd = products.find(prod => prod.id === productFilter);
+        const selectedProdName = selectedProd ? selectedProd.name : '';
+        return item.itemName.toLowerCase().includes(selectedProdName.toLowerCase());
+      });
+      
+      return dateOk && nameOk && vehicleOk && markOk && globalVehicleOk && globalMarkOk && globalLotOk && productMatches;
     });
-  }, [pattis, pattiDateFilter, pattiNameFilter, pattiVehicleFilter, pattiMarkFilter, startDate, endDate]);
+  }, [pattis, pattiDateFilter, pattiNameFilter, pattiVehicleFilter, pattiMarkFilter, startDate, endDate, markFilter, lotFilter, vehicleFilter, productFilter, products]);
 
   const sortedPattis = React.useMemo(() => {
     return [...filteredPattis].sort((a, b) => {
       let va: any = 0, vb: any = 0;
       const aItems = a.items.reduce((s, i) => s + i.amount, 0);
       const bItems = b.items.reduce((s, i) => s + i.amount, 0);
-      const aExp = a.expenses.rent + a.expenses.loading + a.expenses.commission + a.expenses.otherList.reduce((s,o) => s+o.amount, 0);
-      const bExp = b.expenses.rent + b.expenses.loading + b.expenses.commission + b.expenses.otherList.reduce((s,o) => s+o.amount, 0);
+      const aExp = getPattiExpenses(a.expenses);
+      const bExp = getPattiExpenses(b.expenses);
       const aGrand = aItems + aExp - a.lessAmount;
       const bGrand = bItems + bExp - b.lessAmount;
       switch (pattiSortField) {
@@ -867,7 +991,7 @@ export const Reports: React.FC = () => {
   const pattiGrandTotals = React.useMemo(() => {
     return sortedPattis.reduce((acc, p) => {
       const items = p.items.reduce((s, i) => s + i.amount, 0);
-      const exp = p.expenses.rent + p.expenses.loading + p.expenses.commission + p.expenses.otherList.reduce((s,o)=>s+o.amount,0);
+      const exp = getPattiExpenses(p.expenses);
       const grand = items + exp - p.lessAmount;
       return { items: acc.items + items, exp: acc.exp + exp, grand: acc.grand + grand, qty: acc.qty + p.items.reduce((s,i)=>s+i.qty,0), weight: acc.weight + p.items.reduce((s,i)=>s+i.weight,0) };
     }, { items: 0, exp: 0, grand: 0, qty: 0, weight: 0 });
@@ -903,6 +1027,282 @@ export const Reports: React.FC = () => {
       setExpensesSortAsc(true);
     }
   };
+
+  // Aggregated Commission Goods Report Items
+  const commissionReportItems = React.useMemo(() => {
+    const commissionPurchases = DB.getCommissionPurchases();
+    const markMap = new Map<string, {
+      mark: string;
+      inwardBags: number;
+      configuredPrice: number;
+      soldBags: number;
+      soldKg: number;
+      damagedBags: number;
+      damagedKg: number;
+      allTimeSoldBags: number;
+      allTimeSoldKg: number;
+      allTimeDamagedBags: number;
+      allTimeDamagedKg: number;
+    }>();
+
+    // 1. Initialize from all inward commission purchases
+    commissionPurchases.forEach(cp => {
+      cp.items.forEach(item => {
+        const markKey = item.mark.trim();
+        if (!markKey) return;
+        const existing = markMap.get(markKey);
+        if (existing) {
+          existing.inwardBags += item.bags;
+          if (item.salesPrice) {
+            existing.configuredPrice = Math.max(existing.configuredPrice, item.salesPrice);
+          }
+        } else {
+          markMap.set(markKey, {
+            mark: markKey,
+            inwardBags: item.bags,
+            configuredPrice: item.salesPrice || 0,
+            soldBags: 0,
+            soldKg: 0,
+            damagedBags: 0,
+            damagedKg: 0,
+            allTimeSoldBags: 0,
+            allTimeSoldKg: 0,
+            allTimeDamagedBags: 0,
+            allTimeDamagedKg: 0
+          });
+        }
+      });
+    });
+
+    // 2. Aggregate sales
+    sales.forEach(sale => {
+      if (sale.status === 'completed') {
+        const matchesDate = filterDateMatch(sale.date);
+        
+        sale.items.forEach(item => {
+          if (item.commissionPurchaseId && item.variationMark) {
+            const markKey = item.variationMark.trim();
+            const existing = markMap.get(markKey);
+            
+            const bagsSold = item.bags || 0;
+            const kgSold = item.weight || (item.unit.toLowerCase() === 'kg' ? item.qty : 0);
+
+            if (existing) {
+              existing.allTimeSoldBags += bagsSold;
+              existing.allTimeSoldKg += kgSold;
+              if (matchesDate) {
+                existing.soldBags += bagsSold;
+                existing.soldKg += kgSold;
+              }
+            } else {
+              markMap.set(markKey, {
+                mark: markKey,
+                inwardBags: 0,
+                configuredPrice: item.salesPrice,
+                soldBags: matchesDate ? bagsSold : 0,
+                soldKg: matchesDate ? kgSold : 0,
+                damagedBags: 0,
+                damagedKg: 0,
+                allTimeSoldBags: bagsSold,
+                allTimeSoldKg: kgSold,
+                allTimeDamagedBags: 0,
+                allTimeDamagedKg: 0
+              });
+            }
+          }
+        });
+
+        // 3. Process damaged returns
+        if (sale.returnedItems) {
+          sale.returnedItems.forEach(ret => {
+            const isDamaged = ret.reason.toLowerCase().includes('damage');
+            if (isDamaged) {
+              const matchedItem = sale.items.find(i => i.productId === ret.productId);
+              if (matchedItem && matchedItem.commissionPurchaseId && matchedItem.variationMark) {
+                const markKey = matchedItem.variationMark.trim();
+                const existing = markMap.get(markKey);
+                
+                const returnedQty = ret.qty; // in Kg
+                const totalItemQty = matchedItem.weight || matchedItem.qty || 1;
+                const totalItemBags = matchedItem.bags || 0;
+                const returnedBags = totalItemBags > 0 ? (returnedQty * totalItemBags) / totalItemQty : 0;
+                
+                const matchesDate = filterDateMatch(sale.date);
+
+                if (existing) {
+                  existing.allTimeDamagedBags += returnedBags;
+                  existing.allTimeDamagedKg += returnedQty;
+                  if (matchesDate) {
+                    existing.damagedBags += returnedBags;
+                    existing.damagedKg += returnedQty;
+                  }
+                } else {
+                  markMap.set(markKey, {
+                    mark: markKey,
+                    inwardBags: 0,
+                    configuredPrice: matchedItem.salesPrice,
+                    soldBags: 0,
+                    soldKg: 0,
+                    damagedBags: matchesDate ? returnedBags : 0,
+                    damagedKg: matchesDate ? returnedQty : 0,
+                    allTimeSoldBags: 0,
+                    allTimeSoldKg: 0,
+                    allTimeDamagedBags: returnedBags,
+                    allTimeDamagedKg: returnedQty
+                  });
+                }
+              }
+            }
+          });
+        }
+      }
+    });
+
+    // 4. Process manual stock adjustments from stockHistory
+    stockHistory.forEach(log => {
+      if (log.type === 'Adjustment (Sub)' && log.reason && log.reason.toLowerCase().includes('damage')) {
+        const match = log.productName.match(/\(([^)]+)\)$/);
+        if (match) {
+          const markKey = match[1].trim();
+          const existing = markMap.get(markKey);
+          
+          const adjustedKg = Math.abs(log.qty);
+          let avgWeight = 45;
+          if (existing && existing.allTimeSoldBags > 0) {
+            avgWeight = existing.allTimeSoldKg / existing.allTimeSoldBags;
+          }
+          const adjustedBags = adjustedKg / avgWeight;
+          
+          const matchesDate = filterDateMatch(log.date);
+
+          if (existing) {
+            existing.allTimeDamagedBags += adjustedBags;
+            existing.allTimeDamagedKg += adjustedKg;
+            if (matchesDate) {
+              existing.damagedBags += adjustedBags;
+              existing.damagedKg += adjustedKg;
+            }
+          } else {
+            markMap.set(markKey, {
+              mark: markKey,
+              inwardBags: 0,
+              configuredPrice: 0,
+              soldBags: 0,
+              soldKg: 0,
+              damagedBags: matchesDate ? adjustedBags : 0,
+              damagedKg: matchesDate ? adjustedKg : 0,
+              allTimeSoldBags: 0,
+              allTimeSoldKg: 0,
+              allTimeDamagedBags: adjustedBags,
+              allTimeDamagedKg: adjustedKg
+            });
+          }
+        }
+      }
+    });
+
+    return Array.from(markMap.values()).map(item => {
+      const remainingBags = Math.max(0, item.inwardBags - item.allTimeSoldBags - item.allTimeDamagedBags);
+      return {
+        mark: item.mark,
+        inwardBags: item.inwardBags,
+        configuredPrice: item.configuredPrice,
+        soldBags: item.soldBags,
+        soldKg: item.soldKg,
+        damagedBags: item.damagedBags,
+        damagedKg: item.damagedKg,
+        remainingBags
+      };
+    }).filter(item => {
+      // 1. Mark Filter
+      if (markFilter && !item.mark.toLowerCase().includes(markFilter.toLowerCase())) {
+        return false;
+      }
+      
+      // 2. Product Filter
+      if (productFilter !== 'all') {
+        const hasSaleWithProduct = sales.some(sale => 
+          sale.items.some(saleItem => 
+            saleItem.variationMark?.trim().toLowerCase() === item.mark.toLowerCase() &&
+            saleItem.productId === productFilter
+          )
+        );
+        if (!hasSaleWithProduct) return false;
+      }
+      
+      // 3. Lot Filter
+      if (lotFilter) {
+        const hasMatchingCP = commissionPurchases.some(cp => 
+          cp.items.some(cpItem => cpItem.mark.trim().toLowerCase() === item.mark.toLowerCase()) &&
+          cp.billNo.toLowerCase().includes(lotFilter.toLowerCase())
+        );
+        if (!hasMatchingCP) return false;
+      }
+      
+      // 4. Vehicle Filter
+      if (vehicleFilter) {
+        const hasMatchingVehicle = commissionPurchases.some(cp => 
+          cp.items.some(cpItem => cpItem.mark.trim().toLowerCase() === item.mark.toLowerCase()) &&
+          ((cp.lorryNo || '').toLowerCase().includes(vehicleFilter.toLowerCase()) ||
+           (cp.vehicleMark || '').toLowerCase().includes(vehicleFilter.toLowerCase()))
+        );
+        if (!hasMatchingVehicle) return false;
+      }
+      
+      return true;
+    });
+  }, [sales, stockHistory, filterType, startDate, endDate, markFilter, lotFilter, vehicleFilter, productFilter]);
+
+  const sortedCommissionReportItems = React.useMemo(() => {
+    let list = [...commissionReportItems];
+    list.sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      switch (commissionSortField) {
+        case 'mark':
+          valA = a.mark.toLowerCase();
+          valB = b.mark.toLowerCase();
+          break;
+        case 'inwardBags':
+          valA = a.inwardBags;
+          valB = b.inwardBags;
+          break;
+        case 'soldBags':
+          valA = a.soldBags;
+          valB = b.soldBags;
+          break;
+        case 'soldKg':
+          valA = a.soldKg;
+          valB = b.soldKg;
+          break;
+        case 'configuredPrice':
+          valA = a.configuredPrice;
+          valB = b.configuredPrice;
+          break;
+        case 'remainingBags':
+          valA = a.remainingBags;
+          valB = b.remainingBags;
+          break;
+        case 'damagedBags':
+          valA = a.damagedBags;
+          valB = b.damagedBags;
+          break;
+        case 'damagedKg':
+          valA = a.damagedKg;
+          valB = b.damagedKg;
+          break;
+        default:
+          valA = a.mark.toLowerCase();
+          valB = b.mark.toLowerCase();
+      }
+
+      if (valA < valB) return commissionSortAsc ? -1 : 1;
+      if (valA > valB) return commissionSortAsc ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [commissionReportItems, commissionSortField, commissionSortAsc]);
 
 
 
@@ -973,7 +1373,7 @@ export const Reports: React.FC = () => {
         const costVal = item.currentStock * item.purchasePrice;
         const retailVal = item.currentStock * item.salesPrice;
         const potentialProf = retailVal - costVal;
-        const status = item.currentStock === 0 ? 'OUT OF STOCK' : item.currentStock <= item.minStockAlert ? 'LOW STOCK' : 'ADEQUATE';
+        const status = item.currentStock === 0 ? 'OUT OF STOCK' : item.currentStock <= item.minStockAlert ? 'LOW STOCK' : 'IN STOCK';
         const [prodId, varId] = item.id.split('-');
         const trace = getProductPurchaseDetails(prodId, varId);
         return [
@@ -1001,7 +1401,7 @@ export const Reports: React.FC = () => {
         'Current Stock', 'Stock Cost Value (INR)', 'Stock Retail Value (INR)', 'Stock Potential Profit (INR)', 'Status', 'Associated Vehicle No', 'Associated Lot No'
       ];
       rows = sortedMarkWiseReportItems.map(item => {
-        const status = item.currentStock === 0 ? 'OUT OF STOCK' : item.currentStock <= item.minStockAlert ? 'LOW STOCK' : 'ADEQUATE';
+        const status = item.currentStock === 0 ? 'OUT OF STOCK' : item.currentStock <= item.minStockAlert ? 'LOW STOCK' : 'IN STOCK';
         const [prodId, varId] = item.id.split('-');
         const trace = getProductPurchaseDetails(prodId, varId);
         return [
@@ -1030,7 +1430,7 @@ export const Reports: React.FC = () => {
       headers = ['Bill No', 'Date', 'Party Name', 'Vehicle No', 'Transporter Name', 'Truck Driver Name', 'Driver Mobile', 'Truck Owner Mobile', 'Freight Rate (₹)', 'Advance Paid (₹)', 'Mark', 'Items Total (₹)', 'Rent', 'Loading', 'Commission', 'Other Expenses', 'Total Expenses (₹)', 'Less', 'Grand Total (₹)', 'Notes'];
       rows = sortedPattis.map(p => {
         const items = p.items.reduce((s, i) => s + i.amount, 0);
-        const exp = p.expenses.rent + p.expenses.loading + p.expenses.commission + p.expenses.otherList.reduce((s,o)=>s+o.amount,0);
+        const exp = getPattiExpenses(p.expenses);
         const grand = items + exp - p.lessAmount;
         const otherStr = p.expenses.otherList.map(o=>`${o.label||'Other'}:${o.amount.toFixed(2)}`).join(' | ');
         return [
@@ -1057,6 +1457,19 @@ export const Reports: React.FC = () => {
         e.createdBy || '-'
       ]);
       fileName = `Expenses_Report_${filterType}.csv`;
+    } else if (activeReport === 'commission_goods') {
+      headers = ['Mark Name', 'Inward Bags (All Time)', 'Sold Bags (Period)', 'Sold Weight (Kg, Period)', 'Configured Selling Price (INR)', 'Remaining Bags (Stock)', 'Damaged Bags (Period)', 'Damaged Weight (Kg, Period)'];
+      rows = sortedCommissionReportItems.map(item => [
+        item.mark,
+        item.inwardBags.toString(),
+        item.soldBags.toString(),
+        Number(item.soldKg.toFixed(3)).toString(),
+        item.configuredPrice.toFixed(2),
+        Number(item.remainingBags.toFixed(2)).toString(),
+        Number(item.damagedBags.toFixed(2)).toString(),
+        Number(item.damagedKg.toFixed(3)).toString()
+      ]);
+      fileName = `Commission_Goods_Report_${filterType}.csv`;
     } else {
       // Staff Wise Report
       headers = ['Staff Email', 'Role', 'Invoices Count', 'Revenue (INR)', 'Cost Value (INR)', 'Net Profit (INR)', 'Cash Collected (INR)', 'UPI Collected (INR)', 'Card Collected (INR)'];
@@ -1099,15 +1512,16 @@ export const Reports: React.FC = () => {
                   activeReport === 'expenses' ? 'EXPENSES OUTFLOW REPORT' :
                   activeReport === 'stock' ? 'STOCK WISE INVENTORY VALUATION' : 
                   activeReport === 'mark_wise' ? 'MARK WISE SALES & STOCK REPORT' : 
-                  activeReport === 'patti' ? 'PATTI BILLS REPORT' : 'STAFF WISE SALES REPORT';
+                  activeReport === 'patti' ? 'PATTI BILLS REPORT' :
+                  activeReport === 'commission_goods' ? 'COMMISSION GOODS PERFORMANCE REPORT' : 'STAFF WISE SALES REPORT';
     
     return (
       <div className="print-a4" style={{ fontFamily: 'var(--font-body)', background: '#fff', color: '#000', padding: '15mm' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #333', paddingBottom: '1rem', marginBottom: '1rem' }}>
           <div>
             <h2 style={{ fontSize: '1.4rem', fontWeight: 700, textTransform: 'uppercase' }}>{settings.shopName || 'STORE REPORT'}</h2>
-            <p style={{ fontSize: '0.8rem', margin: '2px 0' }}>{settings.address}</p>
-            <p style={{ fontSize: '0.8rem', margin: '2px 0' }}>Phone: {settings.phone}</p>
+            <p style={{ fontSize: '0.8rem', margin: '2px 0', wordBreak: 'break-word' }}>{settings.address}</p>
+            <p style={{ fontSize: '0.8rem', margin: '2px 0', wordBreak: 'break-word' }}>Phone: {settings.phone}</p>
             {settings.gstin && <p style={{ fontSize: '0.8rem', margin: '2px 0', fontWeight: 600 }}>GSTIN: {settings.gstin}</p>}
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -1121,6 +1535,15 @@ export const Reports: React.FC = () => {
             )}
             {productFilter !== 'all' && (
               <p style={{ fontSize: '0.85rem', margin: '2px 0' }}><strong>Product:</strong> {products.find(p => p.id === productFilter)?.name || productFilter}</p>
+            )}
+            {markFilter && (
+              <p style={{ fontSize: '0.85rem', margin: '2px 0' }}><strong>Mark:</strong> {markFilter}</p>
+            )}
+            {lotFilter && (
+              <p style={{ fontSize: '0.85rem', margin: '2px 0' }}><strong>Lot No:</strong> {lotFilter}</p>
+            )}
+            {vehicleFilter && (
+              <p style={{ fontSize: '0.85rem', margin: '2px 0' }}><strong>Vehicle:</strong> {vehicleFilter}</p>
             )}
             <p style={{ fontSize: '0.85rem', margin: '2px 0' }}><strong>Generated:</strong> {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</p>
           </div>
@@ -1255,6 +1678,34 @@ export const Reports: React.FC = () => {
               </div>
             </>
           )}
+          {activeReport === 'commission_goods' && (
+            <>
+              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Inward Bags</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>
+                  {sortedCommissionReportItems.reduce((sum, item) => sum + item.inwardBags, 0)} Bags
+                </div>
+              </div>
+              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Sold Bags / Weight</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>
+                  {sortedCommissionReportItems.reduce((sum, item) => sum + item.soldBags, 0)} Bags / {Number(sortedCommissionReportItems.reduce((sum, item) => sum + item.soldKg, 0).toFixed(2))} Kg
+                </div>
+              </div>
+              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb' }}>
+                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Remaining Stock</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'indigo' }}>
+                  {Number(sortedCommissionReportItems.reduce((sum, item) => sum + item.remainingBags, 0).toFixed(1))} Bags
+                </div>
+              </div>
+              <div style={{ border: '1px solid #ddd', padding: '0.5rem', borderRadius: '4px', background: '#f9fafb', gridColumn: 'span 2' }}>
+                <span style={{ fontSize: '0.75rem', color: '#666', display: 'block' }}>Damaged Goods</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'red' }}>
+                  {Number(sortedCommissionReportItems.reduce((sum, item) => sum + item.damagedBags, 0).toFixed(1))} Bags / {Number(sortedCommissionReportItems.reduce((sum, item) => sum + item.damagedKg, 0).toFixed(2))} Kg
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Main Report Table */}
@@ -1350,6 +1801,17 @@ export const Reports: React.FC = () => {
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Reference ID</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Amount</th>
                   <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Recorded By</th>
+                </>
+              )}
+              {activeReport === 'commission_goods' && (
+                <>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left' }}>Mark Name</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Inward Bags (All Time)</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Sold Bags (Period)</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Sold Weight (Kg, Period)</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>Configured Price</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Remaining Stock (Bags)</th>
+                  <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>Damage Goods (Period)</th>
                 </>
               )}
             </tr>
@@ -1521,6 +1983,19 @@ export const Reports: React.FC = () => {
                 <td style={{ border: '1px solid #ddd', padding: '6px' }}>{(exp.createdBy || '').split('@')[0]}</td>
               </tr>
             ))}
+            {activeReport === 'commission_goods' && sortedCommissionReportItems.map(item => (
+              <tr key={item.mark}>
+                <td style={{ border: '1px solid #ddd', padding: '6px', fontWeight: 600 }}>{item.mark}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{item.inwardBags}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{item.soldBags}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>{Number(item.soldKg.toFixed(2))} Kg</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right' }}>₹{item.configuredPrice.toFixed(2)}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontWeight: 700 }}>{Number(item.remainingBags.toFixed(1))}</td>
+                <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', color: 'red' }}>
+                  {Number(item.damagedBags.toFixed(1))} Bags / {Number(item.damagedKg.toFixed(2))} Kg
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
@@ -1588,6 +2063,13 @@ export const Reports: React.FC = () => {
           >
             <ClipboardList size={14} style={{ display: 'inline', marginRight: '4px' }} />
             Patti Report
+          </button>
+          <button 
+            className={`btn ${activeReport === 'commission_goods' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setActiveReport('commission_goods')}
+          >
+            <ShoppingBag size={14} style={{ display: 'inline', marginRight: '4px' }} />
+            Commission Goods
           </button>
         </div>
       </div>
@@ -1739,6 +2221,64 @@ export const Reports: React.FC = () => {
               </select>
             </div>
           )}
+
+          {activeReport !== 'expenses' && (
+            <>
+              <div className="form-group" style={{ marginBottom: 0, minWidth: '150px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Filter by Mark</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', height: '34px' }}
+                  placeholder="e.g. A, 10"
+                  value={markFilter}
+                  onChange={(e) => setMarkFilter(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0, minWidth: '150px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Filter by Lot No</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', height: '34px' }}
+                  placeholder="e.g. Lot-001"
+                  value={lotFilter}
+                  onChange={(e) => setLotFilter(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0, minWidth: '180px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Filter by Vehicle / Lorry</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', height: '34px' }}
+                  placeholder="e.g. MH-12, Lorry"
+                  value={vehicleFilter}
+                  onChange={(e) => setVehicleFilter(e.target.value)}
+                />
+              </div>
+            </>
+          )}
+
+          {(productFilter !== 'all' || markFilter || lotFilter || vehicleFilter) && (
+            <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 0 }}>
+              <button 
+                type="button"
+                className="btn btn-secondary" 
+                style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem', height: '34px', borderRadius: '4px' }}
+                onClick={() => {
+                  setProductFilter('all');
+                  setMarkFilter('');
+                  setLotFilter('');
+                  setVehicleFilter('');
+                }}
+              >
+                Clear Filters
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1866,7 +2406,7 @@ export const Reports: React.FC = () => {
                   <tbody>
                     {sortedPattis.map(p => {
                       const itemsTotal = p.items.reduce((s, i) => s + i.amount, 0);
-                      const expTotal = p.expenses.rent + p.expenses.loading + p.expenses.commission + p.expenses.otherList.reduce((s,o)=>s+o.amount,0);
+                      const expTotal = getPattiExpenses(p.expenses);
                       const grand = itemsTotal + expTotal - p.lessAmount;
                       return (
                         <tr key={p.id}>
@@ -2750,6 +3290,106 @@ export const Reports: React.FC = () => {
                 No sales transactions found for the selected filters.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Commission Goods Report Tab */}
+      {activeReport === 'commission_goods' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Summary Cards */}
+          <div className="dashboard-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--info)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Inward Bags</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
+                {sortedCommissionReportItems.reduce((sum, item) => sum + item.inwardBags, 0)} Bags
+              </h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--primary)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Bags Sold (Period)</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem' }}>
+                {sortedCommissionReportItems.reduce((sum, item) => sum + item.soldBags, 0)} Bags
+              </h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--success)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Total Weight Sold (Period)</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'var(--success)' }}>
+                {Number(sortedCommissionReportItems.reduce((sum, item) => sum + item.soldKg, 0).toFixed(2))} Kg
+              </h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--warning)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Current Stock remaining</span>
+              <h3 style={{ fontSize: '1.5rem', marginTop: '0.25rem', color: 'indigo' }}>
+                {Number(sortedCommissionReportItems.reduce((sum, item) => sum + item.remainingBags, 0).toFixed(1))} Bags
+              </h3>
+            </div>
+            <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid var(--danger)' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Damaged Goods (Period)</span>
+              <h3 style={{ fontSize: '1.2rem', marginTop: '0.25rem', color: 'var(--danger)' }}>
+                {Number(sortedCommissionReportItems.reduce((sum, item) => sum + item.damagedBags, 0).toFixed(1))} Bags / {Number(sortedCommissionReportItems.reduce((sum, item) => sum + item.damagedKg, 0).toFixed(2))} Kg
+              </h3>
+            </div>
+          </div>
+
+          {/* Details Table */}
+          <div className="glass-panel" style={{ padding: '1rem' }}>
+            <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', fontWeight: 600 }}>Commission Goods Performance</h3>
+            <div className="table-container">
+              <table className="custom-table" style={{ fontSize: '0.85rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => handleCommissionSort('mark')}>
+                      Mark Name {commissionSortField === 'mark' ? (commissionSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }} onClick={() => handleCommissionSort('inwardBags')}>
+                      Inward Bags (All Time) {commissionSortField === 'inwardBags' ? (commissionSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }} onClick={() => handleCommissionSort('soldBags')}>
+                      Sold Bags (Period) {commissionSortField === 'soldBags' ? (commissionSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }} onClick={() => handleCommissionSort('soldKg')}>
+                      Sold Weight (Kg, Period) {commissionSortField === 'soldKg' ? (commissionSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }} onClick={() => handleCommissionSort('configuredPrice')}>
+                      Configured Selling Price {commissionSortField === 'configuredPrice' ? (commissionSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }} onClick={() => handleCommissionSort('remainingBags')}>
+                      Remaining Bags (Stock) {commissionSortField === 'remainingBags' ? (commissionSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }} onClick={() => handleCommissionSort('damagedBags')}>
+                      Damage Goods (Period) {commissionSortField === 'damagedBags' ? (commissionSortAsc ? ' ▲' : ' ▼') : ''}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedCommissionReportItems.length > 0 ? (
+                    sortedCommissionReportItems.map(item => (
+                      <tr key={item.mark}>
+                        <td style={{ fontWeight: 600 }}>
+                          <span style={{ fontSize: '0.85rem', padding: '0.15rem 0.4rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '3px', fontWeight: 600 }}>
+                            {item.mark}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{item.inwardBags}</td>
+                        <td style={{ textAlign: 'center' }}>{item.soldBags}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{Number(item.soldKg.toFixed(3))} Kg</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{item.configuredPrice.toFixed(2)}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: 'indigo' }}>{Number(item.remainingBags.toFixed(1))}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--danger)', fontWeight: 600 }}>
+                          {Number(item.damagedBags.toFixed(1))} Bags / {Number(item.damagedKg.toFixed(3))} Kg
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                        No commission goods found in stock or sales history.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

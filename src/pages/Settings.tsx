@@ -81,6 +81,7 @@ export const Settings: React.FC = () => {
   const [showTotalWeightReceipt, setShowTotalWeightReceipt] = useState<boolean>(settings.showTotalWeightReceipt !== false);
   const [showGstReceipt, setShowGstReceipt] = useState<boolean>(settings.showGstReceipt !== false);
   const [showQrPaymentReceipt, setShowQrPaymentReceipt] = useState<boolean>(settings.showQrPaymentReceipt !== false);
+  const [overdueDaysThreshold, setOverdueDaysThreshold] = useState<number>(settings.overdueDaysThreshold || 15);
 
   // Firebase Config States
   const saved = localStorage.getItem('firebase_config');
@@ -149,6 +150,7 @@ export const Settings: React.FC = () => {
     }
 
     const updatedSettings: SettingsType = {
+      ...settings,
       shopName,
       logo,
       gstin,
@@ -164,7 +166,8 @@ export const Settings: React.FC = () => {
       bankIFSC,
       showTotalWeightReceipt,
       showGstReceipt,
-      showQrPaymentReceipt
+      showQrPaymentReceipt,
+      overdueDaysThreshold
     };
 
     DB.saveSettings(updatedSettings);
@@ -285,6 +288,7 @@ export const Settings: React.FC = () => {
       setShowTotalWeightReceipt(fresh.showTotalWeightReceipt !== false);
       setShowGstReceipt(fresh.showGstReceipt !== false);
       setShowQrPaymentReceipt(fresh.showQrPaymentReceipt !== false);
+      setOverdueDaysThreshold(fresh.overdueDaysThreshold || 15);
 
       showToast('System factory reset completed', 'danger');
     }
@@ -459,18 +463,32 @@ export const Settings: React.FC = () => {
               </div>
             </div>
 
-            <div className="form-group">
-              <label>Default Print Layout / Receipt Format</label>
-              <select
-                className="form-control"
-                value={defaultPrinterLayout}
-                onChange={(e) => setDefaultPrinterLayout(e.target.value as any)}
-              >
-                <option value="3inch">3 Inch Thermal Receipt (80mm)</option>
-                <option value="4inch">4 Inch Thermal Receipt (100mm)</option>
-                <option value="a5">A5 Invoice (148mm x 210mm)</option>
-                <option value="a4">A4 Invoice (210mm x 297mm)</option>
-              </select>
+            <div className="grid-2">
+              <div className="form-group">
+                <label>Default Print Layout / Receipt Format</label>
+                <select
+                  className="form-control"
+                  value={defaultPrinterLayout}
+                  onChange={(e) => setDefaultPrinterLayout(e.target.value as any)}
+                >
+                  <option value="3inch">3 Inch Thermal Receipt (80mm)</option>
+                  <option value="4inch">4 Inch Thermal Receipt (100mm)</option>
+                  <option value="a5">A5 Invoice (148mm x 210mm)</option>
+                  <option value="a4">A4 Invoice (210mm x 297mm)</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Overdue Alert Threshold (Days)</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  min="1"
+                  max="365"
+                  required
+                  value={overdueDaysThreshold}
+                  onChange={(e) => setOverdueDaysThreshold(parseInt(e.target.value) || 15)}
+                />
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>

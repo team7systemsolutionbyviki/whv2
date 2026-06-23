@@ -20,11 +20,66 @@ import {
   FileText,
   Calendar,
   TrendingDown,
-  TrendingUp
+  TrendingUp,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  Tag
 } from 'lucide-react';
+
+const parseCSV = (text: string): string[][] => {
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let inQuotes = false;
+  let currentVal = '';
+  
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+    
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentVal += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(currentVal.trim());
+      currentVal = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        i++;
+      }
+      row.push(currentVal.trim());
+      if (row.length > 1 || row[0] !== '') {
+        lines.push(row);
+      }
+      row = [];
+      currentVal = '';
+    } else {
+      currentVal += char;
+    }
+  }
+  
+  if (currentVal || row.length > 0) {
+    row.push(currentVal.trim());
+    lines.push(row);
+  }
+  
+  return lines;
+};
 
 export const CustomerManagement: React.FC = () => {
   const { dealers, sales, dealerPayments, refreshData, showToast, settings } = useApp();
+
+  const overdueDaysThreshold = settings.overdueDaysThreshold || 15;
+
+  const CUSTOMER_CATEGORIES = useMemo(() => {
+    return settings.customerCategories || ['Wholesale', 'Retail', 'Hotel', 'Local', 'Outstation'];
+  }, [settings.customerCategories]);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('All');
+  const [formCategory, setFormCategory] = useState('Wholesale');
 
   // Sub-tab
   const [subTab, setSubTab] = useState<'directory' | 'ledger' | 'reminders'>('directory');
@@ -33,6 +88,10 @@ export const CustomerManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDealerFormOpen, setIsDealerFormOpen] = useState(false);
   const [editingDealer, setEditingDealer] = useState<Dealer | null>(null);
+  
+  // Custom Categories Manage Modal State
+  const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
 
   // Dealer form fields
   const [formName, setFormName] = useState('');
@@ -41,6 +100,15 @@ export const CustomerManagement: React.FC = () => {
   const [formEmail, setFormEmail] = useState('');
   const [formCreditLimit, setFormCreditLimit] = useState('');
   const [formGstin, setFormGstin] = useState('');
+  const [formOverdueDays, setFormOverdueDays] = useState('');
+
+  // Dues Only Filter state
+  const [showDuesOnly, setShowDuesOnly] = useState(false);
+
+  // Extend Due Duration state
+  const [isExtendModalOpen, setIsExtendModalOpen] = useState(false);
+  const [extendDealer, setExtendDealer] = useState<Dealer | null>(null);
+  const [formExtendDays, setFormExtendDays] = useState('');
 
   // Ledger
   const [selectedDealerLedger, setSelectedDealerLedger] = useState<Dealer | null>(null);
@@ -62,26 +130,30 @@ export const CustomerManagement: React.FC = () => {
     return Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
   };
 
-  // Dealers with balance older than 15 days
+  // Dealers with balance older than their custom or global threshold
   const reminderDealers = useMemo(() => {
     return dealers.filter(d => {
       if (d.outstanding <= 0) return false;
       const dealerSales = sales.filter(s => s.dealerId === d.id && s.status === 'completed');
       if (dealerSales.length === 0) return true;
       const latestDate = dealerSales.reduce((max, s) => s.date > max ? s.date : max, '');
-      return daysSince(latestDate) >= 15;
+      const currentThreshold = d.overdueDaysThreshold || overdueDaysThreshold;
+      return daysSince(latestDate) >= currentThreshold;
     });
-  }, [dealers, sales]);
+  }, [dealers, sales, overdueDaysThreshold]);
 
   // Filtered directory
   const filteredDealers = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return dealers.filter(d =>
-      d.name.toLowerCase().includes(q) ||
-      d.phone.includes(q) ||
-      (d.address || '').toLowerCase().includes(q)
-    );
-  }, [dealers, searchQuery]);
+    return dealers
+      .filter(d => selectedCategoryFilter === 'All' || d.category === selectedCategoryFilter)
+      .filter(d => !showDuesOnly || d.outstanding > 0)
+      .filter(d =>
+        d.name.toLowerCase().includes(q) ||
+        d.phone.includes(q) ||
+        (d.address || '').toLowerCase().includes(q)
+      );
+  }, [dealers, searchQuery, selectedCategoryFilter, showDuesOnly]);
 
   // Ledger data for selected dealer
   const ledgerEntries = useMemo(() => {
@@ -174,6 +246,8 @@ export const CustomerManagement: React.FC = () => {
     setEditingDealer(null);
     setFormName(''); setFormPhone(''); setFormAddress('');
     setFormEmail(''); setFormCreditLimit(''); setFormGstin('');
+    setFormCategory('Wholesale');
+    setFormOverdueDays('');
     setIsDealerFormOpen(true);
   };
 
@@ -183,7 +257,24 @@ export const CustomerManagement: React.FC = () => {
     setFormName(d.name); setFormPhone(d.phone); setFormAddress(d.address);
     setFormEmail(d.email || ''); setFormCreditLimit(d.creditLimit?.toString() || '');
     setFormGstin(d.gstin || '');
+    setFormCategory(d.category || 'Wholesale');
+    setFormOverdueDays(d.overdueDaysThreshold?.toString() || '');
     setIsDealerFormOpen(true);
+  };
+
+  const handleSaveExtension = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extendDealer) return;
+    const days = parseInt(formExtendDays);
+    if (isNaN(days) || days <= 0) {
+      showToast('Please enter a valid number of days', 'warning');
+      return;
+    }
+    const updatedDealer = { ...extendDealer, overdueDaysThreshold: days };
+    DB.saveDealer(updatedDealer);
+    refreshData();
+    setIsExtendModalOpen(false);
+    showToast(`Payment terms for ${extendDealer.name} extended to ${days} days`, 'success');
   };
 
   const handleSaveDealer = (e: React.FormEvent) => {
@@ -198,14 +289,358 @@ export const CustomerManagement: React.FC = () => {
       phone: formPhone.trim(),
       address: formAddress.trim(),
       outstanding: editingDealer ? editingDealer.outstanding : 0,
+      category: formCategory,
       email: formEmail.trim() || undefined,
       creditLimit: formCreditLimit ? parseFloat(formCreditLimit) : undefined,
       gstin: formGstin.trim() || undefined,
+      overdueDaysThreshold: formOverdueDays ? parseInt(formOverdueDays) : undefined,
     };
     DB.saveDealer(dealer);
     refreshData();
     setIsDealerFormOpen(false);
     showToast(editingDealer ? 'Customer updated' : 'Customer registered', 'success');
+  };
+
+  const handlePrintCollectionReceipt = (payment: DealerPayment, dealer: Dealer) => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+
+    w.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Payment Receipt - ${payment.id}</title>
+        <style>
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            width: 80mm;
+            margin: 0;
+            padding: 4px;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #000;
+          }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .bold { font-weight: bold; }
+          .divider { border-top: 1px dashed #000; margin: 6px 0; }
+          .header h2 { margin: 0 0 4px 0; font-size: 16px; text-transform: uppercase; }
+          .header p { margin: 2px 0; font-size: 11px; }
+          .details-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+          .details-table td { padding: 2px 0; vertical-align: top; }
+          .amount-box {
+            border: 1px solid #000;
+            padding: 6px;
+            margin: 10px 0;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+          }
+          .footer { margin-top: 24px; }
+          .signature-box { display: flex; justify-content: space-between; margin-top: 30px; font-size: 11px; }
+          @media print {
+            body { width: 100%; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header text-center">
+          <h2>\${settings.shopName}</h2>
+          <p>\${settings.address}</p>
+          <p>Phone: \${settings.phone}</p>
+          <div class="bold" style="margin-top: 6px; font-size: 13px;">OFFICIAL RECEIPT</div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <table class="details-table">
+          <tr>
+            <td class="bold" style="width: 40%;">Receipt No:</td>
+            <td>\${payment.id}</td>
+          </tr>
+          <tr>
+            <td class="bold">Date & Time:</td>
+            <td>\${new Date(payment.date).toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td class="bold">Customer:</td>
+            <td class="bold">\${dealer.name}</td>
+          </tr>
+          <tr>
+            <td class="bold">Category:</td>
+            <td class="bold" style="text-transform: uppercase; letter-spacing: 0.5px;">\${payment.customerCategory || dealer.category || 'Wholesale'}</td>
+          </tr>
+          <tr>
+            <td class="bold">Phone:</td>
+            <td>\${dealer.phone}</td>
+          </tr>
+        </table>
+        
+        <div class="divider"></div>
+        
+        <div style="font-size: 11px; font-style: italic; margin-top: 4px;">
+          Received with thanks the sum of rupees:
+        </div>
+        <div class="amount-box">
+          ₹ \${payment.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+        
+        <table class="details-table" style="font-size: 11px;">
+          \${payment.referenceNo ? \`
+          <tr>
+            <td class="bold" style="width: 40%;">Ref No./Cheque:</td>
+            <td>\${payment.referenceNo}</td>
+          </tr>\` : ''}
+          \${payment.note ? \`
+          <tr>
+            <td class="bold">Payment Mode/Note:</td>
+            <td>\${payment.note}</td>
+          </tr>\` : ''}
+          <tr>
+            <td class="bold">Payment Type:</td>
+            <td style="text-transform: uppercase;">\${payment.type === 'debit' ? 'Outstanding Dues Added' : 'Balance Payment Collection'}</td>
+          </tr>
+          <tr>
+            <td class="divider" colspan="2"></td>
+          </tr>
+          <tr>
+            <td class="bold" style="font-size: 12px;">Remaining Balance:</td>
+            <td class="bold text-right" style="font-size: 12px; color: #000;">
+              ₹ \${dealer.outstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </td>
+          </tr>
+        </table>
+        
+        <div class="divider"></div>
+        
+        <div class="footer text-center" style="font-size: 10px;">
+          <p>Thank you for your business!</p>
+          <div class="signature-box">
+            <div>Customer Signature</div>
+            <div>Receiver Signature</div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+    w.document.close();
+    setTimeout(() => w.print(), 300);
+  };
+
+  const handleReprintReceipt = (paymentId: string) => {
+    const payment = dealerPayments.find(p => p.id === paymentId);
+    if (payment && selectedDealerLedger) {
+      handlePrintCollectionReceipt(payment, selectedDealerLedger);
+    }
+  };
+
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newCategoryName.trim();
+    if (!name) {
+      showToast('Category name cannot be empty', 'warning');
+      return;
+    }
+    if (CUSTOMER_CATEGORIES.some(cat => cat.toLowerCase() === name.toLowerCase())) {
+      showToast('Category already exists', 'warning');
+      return;
+    }
+    const updatedCategories = [...CUSTOMER_CATEGORIES, name];
+    DB.saveSettings({
+      ...settings,
+      customerCategories: updatedCategories
+    });
+    refreshData();
+    setNewCategoryName('');
+    showToast(`Category "${name}" added successfully`, 'success');
+  };
+
+  const handleDeleteCategory = (catToDelete: string) => {
+    const isUsed = dealers.some(d => (d.category || 'Wholesale') === catToDelete);
+    if (isUsed) {
+      showToast(`Cannot delete category "${catToDelete}" because it is currently assigned to one or more customers.`, 'danger');
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete category "${catToDelete}"?`)) {
+      return;
+    }
+
+    const updatedCategories = CUSTOMER_CATEGORIES.filter(cat => cat !== catToDelete);
+    DB.saveSettings({
+      ...settings,
+      customerCategories: updatedCategories
+    });
+    
+    if (selectedCategoryFilter === catToDelete) {
+      setSelectedCategoryFilter('All');
+    }
+    if (formCategory === catToDelete) {
+      setFormCategory(updatedCategories[0] || 'Wholesale');
+    }
+    
+    refreshData();
+    showToast(`Category "${catToDelete}" deleted`, 'success');
+  };
+
+  // Excel / CSV Export & Import Handlers
+  const handleExportCSV = () => {
+    const headers = [
+      'Customer Name',
+      'Phone Number',
+      'Category',
+      'Address',
+      'Email',
+      'Credit Limit',
+      'GSTIN',
+      'Outstanding Balance',
+      'Overdue Days Threshold'
+    ];
+
+    const rows = dealers.map(d => [
+      d.name,
+      d.phone,
+      d.category || 'Wholesale',
+      d.address || '',
+      d.email || '',
+      d.creditLimit?.toString() || '',
+      d.gstin || '',
+      d.outstanding.toString(),
+      d.overdueDaysThreshold?.toString() || ''
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8,"
+      + [headers.join(','), ...rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Customer_Directory_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Customer directory exported successfully', 'success');
+  };
+
+  const handleDownloadTemplate = () => {
+    const headers = [
+      'Customer Name',
+      'Phone Number',
+      'Category',
+      'Address',
+      'Email',
+      'Credit Limit',
+      'GSTIN',
+      'Outstanding Balance',
+      'Overdue Days Threshold'
+    ];
+
+    const sampleRows = [
+      ['Mahalaxmi Traders', '9876543210', 'Wholesale', 'Main Street, City', 'mahalaxmi@example.com', '50000', '29AAAAA1111A1Z1', '12500.00', '15'],
+      ['Balaji Agencies', '8765432109', 'Retail', 'Market Road, Town', '', '30000', '', '0.00', '30'],
+      ['Srinivasa Stores', '7654321098', 'Hotel', 'Station Road', 'srinivasa@example.com', '', '', '-1500.00', '']
+    ];
+
+    const csvContent = "data:text/csv;charset=utf-8,"
+      + [headers.join(','), ...sampleRows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Customer_Import_Template.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      try {
+        const parsed = parseCSV(text);
+        if (parsed.length < 2) {
+          showToast('Invalid CSV format: Empty file or no data rows found', 'danger');
+          return;
+        }
+
+        const headers = parsed[0].map(h => h.toLowerCase().trim());
+        
+        const idxName = headers.findIndex(h => h.includes('name') || h.includes('customer') || h.includes('shop'));
+        const idxPhone = headers.findIndex(h => h.includes('phone') || h.includes('mobile') || h.includes('contact'));
+        const idxCategory = headers.findIndex(h => h.includes('category') || h.includes('type') || h.includes('group'));
+        const idxAddress = headers.findIndex(h => h.includes('address'));
+        const idxEmail = headers.findIndex(h => h.includes('email'));
+        const idxCreditLimit = headers.findIndex(h => h.includes('limit') || h.includes('credit'));
+        const idxGstin = headers.findIndex(h => h.includes('gst') || h.includes('gstin'));
+        const idxOutstanding = headers.findIndex(h => h.includes('outstanding') || h.includes('balance') || h.includes('due'));
+        const idxOverdueThreshold = headers.findIndex(h => h.includes('overdue') || h.includes('threshold') || h.includes('term') || h.includes('days'));
+
+        if (idxName === -1 || idxPhone === -1) {
+          showToast('Invalid template: "Customer Name" and "Phone Number" columns are required', 'danger');
+          return;
+        }
+
+        const rows = parsed.slice(1);
+        let newCount = 0;
+        let updateCount = 0;
+
+        const existingDealers = DB.getDealers();
+
+        rows.forEach(row => {
+          if (row.length < 2) return;
+          const nameVal = row[idxName]?.trim();
+          const phoneVal = row[idxPhone]?.trim();
+          if (!nameVal || !phoneVal) return;
+
+          const addressVal = idxAddress !== -1 ? row[idxAddress]?.trim() : '';
+          const emailVal = idxEmail !== -1 ? row[idxEmail]?.trim() : '';
+          const categoryVal = idxCategory !== -1 && row[idxCategory] ? row[idxCategory]?.trim() : 'Wholesale';
+          const creditLimitVal = idxCreditLimit !== -1 && row[idxCreditLimit] ? parseFloat(row[idxCreditLimit]) : undefined;
+          const gstinVal = idxGstin !== -1 ? row[idxGstin]?.trim() : '';
+          const outstandingVal = idxOutstanding !== -1 && row[idxOutstanding] ? parseFloat(row[idxOutstanding]) : 0;
+          const overdueThresholdVal = idxOverdueThreshold !== -1 && row[idxOverdueThreshold] ? parseInt(row[idxOverdueThreshold]) : undefined;
+
+          // Find existing by phone or name
+          const existing = existingDealers.find(d => d.phone === phoneVal || d.name.toLowerCase() === nameVal.toLowerCase());
+          const dealerId = existing ? existing.id : 'D-' + Date.now().toString().slice(-6) + Math.random().toString(36).substr(2, 2);
+
+          if (existing) {
+            updateCount++;
+          } else {
+            newCount++;
+          }
+
+          const dealerData: Dealer = {
+            id: dealerId,
+            name: nameVal,
+            phone: phoneVal,
+            address: addressVal,
+            category: categoryVal,
+            email: emailVal || undefined,
+            creditLimit: isNaN(creditLimitVal as number) ? undefined : creditLimitVal,
+            gstin: gstinVal || undefined,
+            outstanding: isNaN(outstandingVal) ? (existing ? existing.outstanding : 0) : outstandingVal,
+            overdueDaysThreshold: isNaN(overdueThresholdVal as number) ? undefined : overdueThresholdVal
+          };
+
+          DB.saveDealer(dealerData);
+        });
+
+        refreshData();
+        showToast(`Import completed: Created ${newCount} and updated ${updateCount} customers`, 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Error parsing CSV file. Please make sure the format is valid.', 'danger');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const handleDeleteDealer = (d: Dealer) => {
@@ -241,6 +676,8 @@ export const CustomerManagement: React.FC = () => {
     }
     
     const isDebit = paymentType === 'debit';
+    const updatedOutstanding = paymentDealer.outstanding + (isDebit ? amount : -amount);
+    const updatedDealer = { ...paymentDealer, outstanding: updatedOutstanding };
     
     const payment: DealerPayment = {
       id: 'DP-' + Date.now().toString().slice(-8),
@@ -250,19 +687,22 @@ export const CustomerManagement: React.FC = () => {
       type: paymentType,
       referenceNo: paymentRef.trim() || undefined,
       note: paymentNote.trim() || undefined,
+      customerCategory: paymentDealer.category || 'Wholesale',
     };
     DB.saveDealerPayment(payment);
     DB.updateDealerOutstanding(paymentDealer.id, isDebit ? amount : -amount);
     refreshData();
     setIsPaymentModalOpen(false);
     
+    // Auto-print receipt
+    handlePrintCollectionReceipt(payment, updatedDealer);
+    
     const actionStr = isDebit ? `Dues of ₹${amount.toFixed(2)} added` : `Payment of ₹${amount.toFixed(2)} recorded`;
     showToast(actionStr, 'success');
     
     // Update ledger if open
     if (selectedDealerLedger?.id === paymentDealer.id) {
-      const updated = DB.getDealers().find(d => d.id === paymentDealer.id);
-      if (updated) setSelectedDealerLedger(updated);
+      setSelectedDealerLedger(updatedDealer);
     }
   };
 
@@ -287,8 +727,8 @@ export const CustomerManagement: React.FC = () => {
         <td style="padding:6px 8px;">${i + 1}</td>
         <td style="padding:6px 8px;">${new Date(e.date).toLocaleDateString()}</td>
         <td style="padding:6px 8px;">${e.description}</td>
-        <td style="padding:6px 8px;text-align:right;color:${e.debit > 0 ? '#dc2626' : '#6b7280'};">${e.debit > 0 ? '₹' + e.debit.toFixed(2) : '-'}</td>
         <td style="padding:6px 8px;text-align:right;color:${e.credit > 0 ? '#16a34a' : '#6b7280'};">${e.credit > 0 ? '₹' + e.credit.toFixed(2) : '-'}</td>
+        <td style="padding:6px 8px;text-align:right;color:${e.debit > 0 ? '#dc2626' : '#6b7280'};">${e.debit > 0 ? '₹' + e.debit.toFixed(2) : '-'}</td>
         <td style="padding:6px 8px;text-align:right;font-weight:600;color:${e.balance > 0 ? '#dc2626' : '#16a34a'};">₹${e.balance.toFixed(2)}</td>
       </tr>
     `).join('');
@@ -299,8 +739,8 @@ export const CustomerManagement: React.FC = () => {
         <div style="display:flex;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:12px;margin-bottom:16px;">
           <div>
             <h2 style="margin:0;font-size:18px;">${settings.shopName}</h2>
-            <p style="margin:2px 0;font-size:12px;">${settings.address}</p>
-            <p style="margin:2px 0;font-size:12px;">Ph: ${settings.phone}</p>
+            <p style="margin:2px 0;font-size:12px;word-break:break-word;">${settings.address}</p>
+            <p style="margin:2px 0;font-size:12px;word-break:break-word;">Ph: ${settings.phone}</p>
           </div>
           <div style="text-align:right;">
             <h3 style="margin:0;font-size:15px;color:#4f46e5;">CUSTOMER LEDGER</h3>
@@ -311,13 +751,13 @@ export const CustomerManagement: React.FC = () => {
           </div>
         </div>
         <table>
-          <thead><tr><th>S.No</th><th>Date</th><th>Description</th><th style="text-align:right;">Debit (Dr)</th><th style="text-align:right;">Credit (Cr)</th><th style="text-align:right;">Balance</th></tr></thead>
+          <thead><tr><th>S.No</th><th>Date</th><th>Description</th><th style="text-align:right;">Amount In</th><th style="text-align:right;">Amount Out</th><th style="text-align:right;">Balance Amount</th></tr></thead>
           <tbody>${rows}</tbody>
           <tfoot>
             <tr style="background:#f9fafb;font-weight:700;">
               <td colspan="3" style="padding:8px;text-align:right;">TOTAL</td>
-              <td style="padding:8px;text-align:right;color:#dc2626;">₹${ledgerTotalDebit.toFixed(2)}</td>
               <td style="padding:8px;text-align:right;color:#16a34a;">₹${ledgerTotalCredit.toFixed(2)}</td>
+              <td style="padding:8px;text-align:right;color:#dc2626;">₹${ledgerTotalDebit.toFixed(2)}</td>
               <td style="padding:8px;text-align:right;color:${ledgerTotalDebit - ledgerTotalCredit > 0 ? '#dc2626' : '#16a34a'};">₹${(ledgerTotalDebit - ledgerTotalCredit).toFixed(2)}</td>
             </tr>
           </tfoot>
@@ -339,7 +779,7 @@ export const CustomerManagement: React.FC = () => {
     const w = window.open('', '_blank');
     if (!w) return;
 
-    const sortedDealers = [...dealers].sort((a, b) => {
+    const sortedDealers = [...filteredDealers].sort((a, b) => {
       if (b.outstanding !== a.outstanding) {
         return b.outstanding - a.outstanding;
       }
@@ -450,8 +890,8 @@ export const CustomerManagement: React.FC = () => {
         <div class="header-container">
           <div class="shop-details">
             <h2>${settings.shopName}</h2>
-            <p>${settings.address}</p>
-            <p>Phone: ${settings.phone}</p>
+            <p style="word-break:break-word;">${settings.address}</p>
+            <p style="word-break:break-word;">Phone: ${settings.phone}</p>
           </div>
           <div class="report-details">
             <h3>CUSTOMER BALANCE SHEET REPORT</h3>
@@ -556,24 +996,93 @@ export const CustomerManagement: React.FC = () => {
       {subTab === 'directory' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Toolbar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ position: 'relative', flex: 1, maxWidth: '380px' }}>
-              <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                type="text"
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', flex: 1, maxWidth: '580px', alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Search by name, phone or address..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={{ paddingLeft: '36px' }}
+                />
+              </div>
+              <select
                 className="form-control"
-                placeholder="Search by name, phone or address..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                style={{ paddingLeft: '36px' }}
-              />
+                style={{ width: '180px', height: '38px', padding: '0.375rem 0.75rem' }}
+                value={selectedCategoryFilter}
+                onChange={e => setSelectedCategoryFilter(e.target.value)}
+              >
+                <option value="All">All Categories</option>
+                {CUSTOMER_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', userSelect: 'none', marginLeft: '0.5rem', whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={showDuesOnly}
+                  onChange={e => setShowDuesOnly(e.target.checked)}
+                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                />
+                <span>Show Dues Only</span>
+              </label>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn btn-secondary" onClick={handlePrintCustomerReport}>
-                <Printer size={15} /> Print Report
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleDownloadTemplate} 
+                title="Download Import CSV/Excel Template"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem' }}
+              >
+                <FileSpreadsheet size={15} />
+                <span>Template</span>
               </button>
-              <button className="btn btn-primary" onClick={openAddDealer}>
-                <Plus size={15} /> Add Customer
+              
+              <button 
+                className="btn btn-secondary" 
+                onClick={handleExportCSV} 
+                title="Export Customers to CSV/Excel"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem' }}
+              >
+                <Download size={15} />
+                <span>Export Excel</span>
+              </button>
+              
+              <label 
+                className="btn btn-secondary" 
+                title="Import Customers from CSV/Excel"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem', cursor: 'pointer', margin: 0 }}
+              >
+                <Upload size={15} />
+                <span>Import Excel</span>
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleImportCSV} 
+                  style={{ display: 'none' }} 
+                />
+              </label>
+
+              <button className="btn btn-secondary" onClick={handlePrintCustomerReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem' }}>
+                <Printer size={15} />
+                <span>Print Report</span>
+              </button>
+              
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setIsCategoriesModalOpen(true)} 
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem' }}
+              >
+                <Tag size={15} />
+                <span>Manage Categories</span>
+              </button>
+
+              <button className="btn btn-primary" onClick={openAddDealer} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem' }}>
+                <Plus size={15} />
+                <span>Add Customer</span>
               </button>
             </div>
           </div>
@@ -592,7 +1101,7 @@ export const CustomerManagement: React.FC = () => {
             </div>
             <div className="glass-panel" style={{ padding: '1rem', textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--warning)' }}>{reminderDealers.length}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>15+ Day Overdue</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{overdueDaysThreshold}+ Day Overdue</div>
             </div>
           </div>
 
@@ -621,7 +1130,7 @@ export const CustomerManagement: React.FC = () => {
                       background: 'var(--danger)', color: 'white',
                       fontSize: '0.65rem', padding: '0.15rem 0.4rem',
                       borderRadius: '999px', fontWeight: 700
-                    }}>15+ Day Due</div>
+                    }}>{d.overdueDaysThreshold || overdueDaysThreshold}+ Day Due</div>
                   )}
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div style={{
@@ -633,7 +1142,20 @@ export const CustomerManagement: React.FC = () => {
                       {d.name.charAt(0).toUpperCase()}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h4 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, marginBottom: '0.2rem' }}>{d.name}</h4>
+                      <h4 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, marginBottom: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span>{d.name}</span>
+                        <span style={{ 
+                          fontSize: '0.65rem', 
+                          fontWeight: 600, 
+                          padding: '0.1rem 0.4rem', 
+                          background: 'var(--primary-light)', 
+                          color: 'var(--primary)', 
+                          borderRadius: '4px',
+                          border: '1px solid rgba(99,102,241,0.15)' 
+                        }}>
+                          {d.category || 'Wholesale'}
+                        </span>
+                      </h4>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                           <Phone size={11} /> {d.phone}
@@ -657,6 +1179,29 @@ export const CustomerManagement: React.FC = () => {
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Total Invoices</div>
                       <div style={{ fontSize: '1rem', fontWeight: 600 }}>{dealerSales.length}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: '1fr 1fr', 
+                    gap: '0.5rem', 
+                    background: 'var(--bg-input)', 
+                    padding: '0.5rem 0.75rem', 
+                    borderRadius: '6px', 
+                    marginBottom: '0.75rem', 
+                    border: '1px solid var(--border-color)',
+                    fontSize: '0.75rem'
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>Payment Term</span>
+                      <span style={{ fontWeight: 600 }}>{d.overdueDaysThreshold || overdueDaysThreshold} Days</span>
+                    </div>
+                    <div>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>Dues Duration</span>
+                      <span style={{ fontWeight: 600, color: isOverdue ? 'var(--danger)' : 'var(--text-primary)' }}>
+                        {d.outstanding > 0 ? (lastSale ? `${daysSince(lastSale)} days` : 'Immediate') : 'No dues'}
+                      </span>
                     </div>
                   </div>
 
@@ -688,6 +1233,14 @@ export const CustomerManagement: React.FC = () => {
                       onClick={() => openPaymentModal(d, 'debit')}
                     >
                       <Plus size={12} /> Add Dues
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                      onClick={() => { setExtendDealer(d); setFormExtendDays((d.overdueDaysThreshold || overdueDaysThreshold).toString()); setIsExtendModalOpen(true); }}
+                      title="Extend Due Duration"
+                    >
+                      <Clock size={12} /> Extend
                     </button>
                     {d.outstanding > 0 && (
                       <button
@@ -864,9 +1417,9 @@ export const CustomerManagement: React.FC = () => {
                           <th>#</th>
                           <th>Date</th>
                           <th>Description</th>
-                          <th style={{ textAlign: 'right' }}>Debit (Dr)</th>
-                          <th style={{ textAlign: 'right' }}>Credit (Cr)</th>
-                          <th style={{ textAlign: 'right' }}>Balance</th>
+                          <th style={{ textAlign: 'right' }}>Amount In</th>
+                          <th style={{ textAlign: 'right' }}>Amount Out</th>
+                          <th style={{ textAlign: 'right' }}>Balance Amount</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -875,19 +1428,31 @@ export const CustomerManagement: React.FC = () => {
                             <td>{i + 1}</td>
                             <td style={{ whiteSpace: 'nowrap' }}>{new Date(e.date).toLocaleDateString()}</td>
                             <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                {e.type === 'sale'
-                                  ? <TrendingDown size={12} style={{ color: 'var(--danger)' }} />
-                                  : <TrendingUp size={12} style={{ color: 'var(--success)' }} />
-                                }
-                                {e.description}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  {e.type === 'sale'
+                                    ? <TrendingDown size={12} style={{ color: 'var(--danger)' }} />
+                                    : <TrendingUp size={12} style={{ color: 'var(--success)' }} />
+                                  }
+                                  {e.description}
+                                </div>
+                                {(e.type === 'payment' || e.type === 'debit_adj') && (
+                                  <button
+                                    className="btn btn-ghost btn-icon"
+                                    style={{ padding: '0.25rem', color: 'var(--primary)' }}
+                                    onClick={() => handleReprintReceipt(e.id)}
+                                    title="Reprint Payment Receipt"
+                                  >
+                                    <Printer size={12} />
+                                  </button>
+                                )}
                               </div>
-                            </td>
-                            <td style={{ textAlign: 'right', color: e.debit > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
-                              {e.debit > 0 ? `₹${e.debit.toFixed(2)}` : '-'}
                             </td>
                             <td style={{ textAlign: 'right', color: e.credit > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
                               {e.credit > 0 ? `₹${e.credit.toFixed(2)}` : '-'}
+                            </td>
+                            <td style={{ textAlign: 'right', color: e.debit > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
+                              {e.debit > 0 ? `₹${e.debit.toFixed(2)}` : '-'}
                             </td>
                             <td style={{ textAlign: 'right', fontWeight: 600, color: e.balance > 0 ? 'var(--danger)' : 'var(--success)' }}>
                               ₹{e.balance.toFixed(2)}
@@ -898,8 +1463,8 @@ export const CustomerManagement: React.FC = () => {
                       <tfoot>
                         <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border-color)' }}>
                           <td colSpan={3} style={{ textAlign: 'right', padding: '0.6rem' }}>TOTAL</td>
-                          <td style={{ textAlign: 'right', padding: '0.6rem', color: 'var(--danger)' }}>₹{ledgerTotalDebit.toFixed(2)}</td>
                           <td style={{ textAlign: 'right', padding: '0.6rem', color: 'var(--success)' }}>₹{ledgerTotalCredit.toFixed(2)}</td>
+                          <td style={{ textAlign: 'right', padding: '0.6rem', color: 'var(--danger)' }}>₹{ledgerTotalDebit.toFixed(2)}</td>
                           <td style={{ textAlign: 'right', padding: '0.6rem', color: (ledgerTotalDebit - ledgerTotalCredit) > 0 ? 'var(--danger)' : 'var(--success)' }}>
                             ₹{(ledgerTotalDebit - ledgerTotalCredit).toFixed(2)}
                           </td>
@@ -929,7 +1494,7 @@ export const CustomerManagement: React.FC = () => {
           <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--danger)', fontWeight: 600, fontSize: '0.9rem' }}>
               <AlertTriangle size={16} />
-              {reminderDealers.length} customer{reminderDealers.length !== 1 ? 's' : ''} with overdue balances (15+ days without payment)
+              {reminderDealers.length} customer{reminderDealers.length !== 1 ? 's' : ''} with overdue balances ({overdueDaysThreshold}+ days without payment)
             </div>
           </div>
 
@@ -937,7 +1502,7 @@ export const CustomerManagement: React.FC = () => {
             <div className="glass-panel" style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
               <CheckCircle size={36} style={{ color: 'var(--success)', opacity: 0.6 }} />
               <span style={{ fontWeight: 600 }}>All Clear!</span>
-              <span style={{ fontSize: '0.85rem' }}>No customers have overdue balances beyond 15 days.</span>
+              <span style={{ fontSize: '0.85rem' }}>No customers have overdue balances beyond {overdueDaysThreshold} days.</span>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1001,6 +1566,13 @@ export const CustomerManagement: React.FC = () => {
                         <DollarSign size={13} /> Collect Payment
                       </button>
                       <button
+                        className="btn btn-secondary"
+                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}
+                        onClick={() => { setExtendDealer(d); setFormExtendDays((d.overdueDaysThreshold || overdueDaysThreshold).toString()); setIsExtendModalOpen(true); }}
+                      >
+                        <Clock size={13} /> Extend Terms
+                      </button>
+                      <button
                         className="btn"
                         style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', background: '#25D366', color: '#fff', border: 'none' }}
                         onClick={() => sendWhatsAppReminder(d)}
@@ -1059,9 +1631,38 @@ export const CustomerManagement: React.FC = () => {
                     <input type="number" className="form-control" value={formCreditLimit} onChange={e => setFormCreditLimit(e.target.value)} placeholder="e.g. 50000" min="0" />
                   </div>
                 </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label>GSTIN (optional)</label>
-                  <input type="text" className="form-control" value={formGstin} onChange={e => setFormGstin(e.target.value)} placeholder="GST Number" />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>Customer Category *</label>
+                    <select
+                      className="form-control"
+                      value={formCategory}
+                      onChange={e => setFormCategory(e.target.value)}
+                      required
+                    >
+                      {CUSTOMER_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>GSTIN (optional)</label>
+                    <input type="text" className="form-control" value={formGstin} onChange={e => setFormGstin(e.target.value)} placeholder="GST Number" />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>Overdue Threshold (Days)</label>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      value={formOverdueDays} 
+                      onChange={e => setFormOverdueDays(e.target.value)} 
+                      placeholder={`Global default: ${overdueDaysThreshold} days`}
+                      min="1" 
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}></div>
                 </div>
               </div>
               <div className="modal-footer">
@@ -1162,6 +1763,129 @@ export const CustomerManagement: React.FC = () => {
                 <button type="submit" className={paymentType === 'debit' ? 'btn btn-primary' : 'btn btn-success'}>
                   <CheckCircle size={15} /> {paymentType === 'debit' ? 'Add Dues' : 'Record Payment'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* ====================== MANAGE CATEGORIES MODAL ====================== */}
+      {isCategoriesModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <h3>Manage Customer Categories</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setIsCategoriesModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              
+              {/* Add New Category form */}
+              <form onSubmit={handleAddCategory} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
+                  <label>New Category Name</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    placeholder="e.g. Distributor, Agent" 
+                    value={newCategoryName} 
+                    onChange={e => setNewCategoryName(e.target.value)}
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary" style={{ height: '38px', padding: '0 1rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Plus size={16} />
+                  <span>Add</span>
+                </button>
+              </form>
+
+              <hr style={{ borderColor: 'var(--border-color)', margin: '0.25rem 0' }} />
+
+              {/* Categories List */}
+              <div>
+                <label style={{ marginBottom: '0.5rem', fontWeight: 600, display: 'block' }}>Existing Categories</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '250px', overflowY: 'auto' }}>
+                  {CUSTOMER_CATEGORIES.map(cat => {
+                    const count = dealers.filter(d => (d.category || 'Wholesale') === cat).length;
+                    return (
+                      <div 
+                        key={cat} 
+                        style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center', 
+                          padding: '0.6rem 0.75rem', 
+                          background: 'var(--bg-input)', 
+                          borderRadius: '6px', 
+                          border: '1px solid var(--border-color)' 
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{cat}</span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({count} customer{count !== 1 ? 's' : ''})</span>
+                        </div>
+                        <button 
+                          className="btn btn-ghost btn-danger btn-icon" 
+                          style={{ padding: '0.25rem' }} 
+                          onClick={() => handleDeleteCategory(cat)}
+                          title={`Delete Category "${cat}"`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setIsCategoriesModalOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ====================== EXTEND DUE DURATION MODAL ====================== */}
+      {isExtendModalOpen && extendDealer && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <h3>Extend Due Duration</h3>
+              <button className="btn btn-ghost btn-icon" onClick={() => setIsExtendModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveExtension}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ background: 'var(--bg-input)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{extendDealer.name}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Ph: {extendDealer.phone}</div>
+                  <div style={{ marginTop: '0.4rem', fontSize: '0.9rem', fontWeight: 600 }}>
+                    Current Payment Term: <span style={{ color: 'var(--danger)' }}>{extendDealer.overdueDaysThreshold || overdueDaysThreshold} Days</span>
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Allowed Payment Terms (Days)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    required
+                    min="1"
+                    value={formExtendDays}
+                    onChange={e => setFormExtendDays(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setFormExtendDays(String((extendDealer.overdueDaysThreshold || overdueDaysThreshold) + 7))}>+7 Days</button>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setFormExtendDays(String((extendDealer.overdueDaysThreshold || overdueDaysThreshold) + 15))}>+15 Days</button>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }} onClick={() => setFormExtendDays(String((extendDealer.overdueDaysThreshold || overdueDaysThreshold) + 30))}>+30 Days</button>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setIsExtendModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Update Terms</button>
               </div>
             </form>
           </div>

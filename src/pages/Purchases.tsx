@@ -2089,8 +2089,8 @@ export const Purchases: React.FC = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #333', paddingBottom: '0.75rem', marginBottom: '1rem' }}>
                     <div>
                       <h2 style={{ fontSize: '1.25rem', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>{settings.shopName || 'WAREHOUSE HUB'}</h2>
-                      <p style={{ margin: '0.2rem 0', fontSize: '0.75rem', color: '#555' }}>{settings.address}</p>
-                      <p style={{ margin: '0.2rem 0', fontSize: '0.75rem', color: '#555' }}>Phone: {settings.phone}</p>
+                      <p style={{ margin: '0.2rem 0', fontSize: '0.75rem', color: '#555', wordBreak: 'break-word' }}>{settings.address}</p>
+                      <p style={{ margin: '0.2rem 0', fontSize: '0.75rem', color: '#555', wordBreak: 'break-word' }}>Phone: {settings.phone}</p>
                       {settings.gstin && <p style={{ margin: '0.2rem 0', fontSize: '0.75rem', fontWeight: 600 }}>GSTIN: {settings.gstin}</p>}
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -2198,8 +2198,8 @@ export const Purchases: React.FC = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #000', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 'bold' }}>{settings.shopName || 'WAREHOUSE HUB'}</h2>
-              <p style={{ margin: '2px 0', fontSize: '11px' }}>{settings.address}</p>
-              <p style={{ margin: '2px 0', fontSize: '11px' }}>Phone: {settings.phone}</p>
+              <p style={{ margin: '2px 0', fontSize: '11px', wordBreak: 'break-word' }}>{settings.address}</p>
+              <p style={{ margin: '2px 0', fontSize: '11px', wordBreak: 'break-word' }}>Phone: {settings.phone}</p>
               {settings.gstin && <p style={{ margin: '2px 0', fontSize: '11px', fontWeight: 'bold' }}>GSTIN: {settings.gstin}</p>}
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -2293,8 +2293,8 @@ export const Purchases: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #000', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
                 <div>
                   <h2 style={{ fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', margin: 0 }}>{settings.shopName || 'WAREHOUSE HUB'}</h2>
-                  <p style={{ margin: '2px 0', fontSize: '11px' }}>{settings.address}</p>
-                  <p style={{ margin: '2px 0', fontSize: '11px' }}>Phone: {settings.phone}</p>
+                  <p style={{ margin: '2px 0', fontSize: '11px', wordBreak: 'break-word' }}>{settings.address}</p>
+                  <p style={{ margin: '2px 0', fontSize: '11px', wordBreak: 'break-word' }}>Phone: {settings.phone}</p>
                   {settings.gstin && <p style={{ margin: '2px 0', fontSize: '11px', fontWeight: 'bold' }}>GSTIN: {settings.gstin}</p>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -2414,8 +2414,8 @@ export const Purchases: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #000', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
                 <div>
                   <h2 style={{ fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', margin: 0 }}>{settings.shopName || 'WAREHOUSE HUB'}</h2>
-                  <p style={{ margin: '2px 0', fontSize: '11px' }}>{settings.address}</p>
-                  <p style={{ margin: '2px 0', fontSize: '11px' }}>Phone: {settings.phone}</p>
+                  <p style={{ margin: '2px 0', fontSize: '11px', wordBreak: 'break-word' }}>{settings.address}</p>
+                  <p style={{ margin: '2px 0', fontSize: '11px', wordBreak: 'break-word' }}>Phone: {settings.phone}</p>
                   {settings.gstin && <p style={{ margin: '2px 0', fontSize: '11px', fontWeight: 'bold' }}>GSTIN: {settings.gstin}</p>}
                 </div>
                 <div style={{ textAlign: 'right' }}>

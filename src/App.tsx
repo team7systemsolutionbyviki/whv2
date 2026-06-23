@@ -2,10 +2,8 @@ import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './pages/Dashboard';
 import { Products } from './pages/Products';
 import { POS } from './pages/POS';
-import { Wholesale } from './pages/Wholesale';
 import { Purchases } from './pages/Purchases';
 import { Inventory } from './pages/Inventory';
 import { Reports } from './pages/Reports';
@@ -14,6 +12,7 @@ import { ProfitAdder } from './pages/ProfitAdder';
 import { CustomerManagement } from './pages/CustomerManagement';
 import { Patti } from './pages/Patti';
 import { Expenses } from './pages/Expenses';
+import { CommissionGoods } from './pages/CommissionGoods';
 import { Login } from './pages/Login';
 import { X, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 
@@ -25,8 +24,8 @@ const AppContent: React.FC = () => {
   const userRole = user?.role || (isSuperAdmin ? 'super_admin' : (user?.email.toLowerCase() === 'admin@wolsales.com' ? 'admin' : 'staff'));
 
   React.useEffect(() => {
-    if (user && userRole === 'staff' && !['products', 'pos', 'wholesale'].includes(activeTab)) {
-      setActiveTab('products');
+    if (user && userRole === 'staff' && !['products', 'pos'].includes(activeTab)) {
+      setActiveTab('pos');
     }
   }, [user, userRole, activeTab, setActiveTab]);
 
@@ -75,24 +74,20 @@ const AppContent: React.FC = () => {
           return <Products />;
         case 'pos':
           return <POS />;
-        case 'wholesale':
-          return <Wholesale />;
         default:
-          return <Products />;
+          return <POS />;
       }
     }
 
     switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
       case 'products':
         return <Products />;
       case 'pos':
         return <POS />;
-      case 'wholesale':
-        return <Wholesale />;
       case 'purchases':
         return <Purchases />;
+      case 'purchase_commission_goods':
+        return <CommissionGoods />;
       case 'inventory':
         return <Inventory />;
       case 'reports':
@@ -108,7 +103,7 @@ const AppContent: React.FC = () => {
       case 'expenses':
         return <Expenses />;
       default:
-        return <Dashboard />;
+        return <POS />;
     }
   };
 

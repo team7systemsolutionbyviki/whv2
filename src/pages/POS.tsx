@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp, CartItem } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { DB, Product, Sale, ProductVariation, Dealer } from '../utils/db';
+import { DB, Product, Sale, ProductVariation, Dealer, CommissionPurchase } from '../utils/db';
 import { 
   Search, 
   Barcode, 
@@ -28,6 +28,7 @@ export const POS: React.FC = () => {
   const {
     products,
     dealers,
+    suppliers,
     refreshData,
     showToast,
     retailCart,
@@ -60,6 +61,80 @@ export const POS: React.FC = () => {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [duplicateBarcodeProducts, setDuplicateBarcodeProducts] = useState<Product[]>([]);
   const [variationSelectorProduct, setVariationSelectorProduct] = useState<Product | null>(null);
+  
+  const [gridMode, setGridMode] = useState<'standard' | 'commission'>('standard');
+
+  const commissionPurchases = useMemo(() => {
+    return DB.getCommissionPurchases();
+  }, [sales]);
+
+  const commissionInwardItems = useMemo(() => {
+    const soldBagsMap = new Map<string, number>();
+    sales.forEach(sale => {
+      if (sale.status === 'completed') {
+        sale.items.forEach(item => {
+          if (item.commissionPurchaseId) {
+            const key = `${item.commissionPurchaseId}-${item.variationMark || ''}`;
+            soldBagsMap.set(key, (soldBagsMap.get(key) || 0) + (item.bags || 0));
+          }
+        });
+      }
+    });
+
+    const list: Array<{
+      commissionPurchaseId: string;
+      lotNo: string;
+      date: string;
+      supplierId: string;
+      supplierName: string;
+      lorryNo: string;
+      vehicleMark?: string;
+      mark: string;
+      initialBags: number;
+      remainingBags: number;
+      salesPrice: number;
+    }> = [];
+
+    commissionPurchases.forEach(cp => {
+      const supplier = suppliers.find(s => s.id === cp.supplierId);
+      const supplierName = supplier ? supplier.name : 'Unknown';
+      
+      cp.items.forEach(item => {
+        const key = `${cp.id}-${item.mark}`;
+        const sold = soldBagsMap.get(key) || 0;
+        const remaining = item.bags - sold;
+        
+        list.push({
+          commissionPurchaseId: cp.id,
+          lotNo: cp.billNo,
+          date: cp.date,
+          supplierId: cp.supplierId,
+          supplierName,
+          lorryNo: cp.lorryNo || '—',
+          vehicleMark: cp.vehicleMark || '—',
+          mark: item.mark,
+          initialBags: item.bags,
+          remainingBags: remaining,
+          salesPrice: item.salesPrice || 0
+        });
+      });
+    });
+
+    return list;
+  }, [commissionPurchases, sales, suppliers]);
+
+  const filteredCommissionInwardItems = useMemo(() => {
+    const query = productSearch.toLowerCase().trim();
+    if (!query) return commissionInwardItems;
+    
+    return commissionInwardItems.filter(item => 
+      item.lotNo.toLowerCase().includes(query) ||
+      item.mark.toLowerCase().includes(query) ||
+      item.supplierName.toLowerCase().includes(query) ||
+      item.lorryNo.toLowerCase().includes(query) ||
+      (item.vehicleMark && item.vehicleMark.toLowerCase().includes(query))
+    );
+  }, [commissionInwardItems, productSearch]);
   const barcodeRef = useRef<HTMLInputElement>(null);
   const [hideScanBar, setHideScanBar] = useState<boolean>(() => {
     const val = localStorage.getItem('pos_hide_scan_bar');
@@ -230,7 +305,7 @@ export const POS: React.FC = () => {
   };
 
   const isPricePerKg = (item: CartItem): boolean => {
-    const baseUnit = (item.variation?.unit || item.product.unit || '').toLowerCase().trim();
+    const baseUnit = (item.customUnit || item.variation?.unit || item.product.unit || '').toLowerCase().trim();
     return baseUnit === 'kg';
   };
 
@@ -319,13 +394,13 @@ export const POS: React.FC = () => {
         }
       }
     } else {
-      if (totalPaid > cartTotal) {
-        showToast(`Allocated payment amount exceeds total (Paid: ₹${totalPaid}, Due: ₹${cartTotal})`, 'warning');
+      if (totalPaid > cartTotal && !selectedDealerId) {
+        showToast(`Allocated payment amount exceeds total (Paid: ₹${totalPaid}, Due: ₹${cartTotal}). Link a customer to adjust old balance.`, 'warning');
         return;
       }
       const creditAmt = cartTotal - totalPaid;
-      if (creditAmt > 0 && !selectedDealerId) {
-        showToast(`Please link a customer to save remaining balance of ₹${creditAmt.toFixed(2)} as credit`, 'warning');
+      if (creditAmt !== 0 && !selectedDealerId) {
+        showToast(`Please link a customer to save remaining/excess balance of ₹${Math.abs(creditAmt).toFixed(2)} as credit`, 'warning');
         return;
       }
     }
@@ -367,7 +442,9 @@ export const POS: React.FC = () => {
           variationId: item.variation?.id,
           variationMark: item.variation?.mark,
           weight: getCartItemWeightInKg(item),
-          bags: item.bags
+          bags: item.bags,
+          lotNo: item.lotNo,
+          commissionPurchaseId: item.commissionPurchaseId
         };
       }),
       subtotal: cartSubtotal,
@@ -619,118 +696,266 @@ export const POS: React.FC = () => {
               />
             </div>
 
+            {/* Grid mode tab selectors */}
+            <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
+              <button
+                type="button"
+                className={`btn ${gridMode === 'standard' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}
+                onClick={() => setGridMode('standard')}
+              >
+                Standard Products
+              </button>
+              <button
+                type="button"
+                className={`btn ${gridMode === 'commission' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}
+                onClick={() => setGridMode('commission')}
+              >
+                Commission Lots
+              </button>
+            </div>
+
             {/* Products Grid */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <h4 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                {productSearch.trim() ? `SEARCH RESULTS (${filteredDisplayItems.length})` : 'ALL PRODUCTS & BATCH MARKS'}
-              </h4>
-              
-              {filteredDisplayItems.length > 0 ? (
-                <div style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(215px, 1fr))', 
-                  gap: '0.75rem',
-                  maxHeight: '480px',
-                  overflowY: 'auto',
-                  paddingRight: '0.25rem'
-                }}>
-                  {filteredDisplayItems.map((item) => {
-                    const isLowStock = item.currentStock <= item.product.minStockAlert;
-                    return (
-                      <div
-                        key={item.id}
-                        className="glass-panel glass-panel-hover"
-                        onClick={() => addToRetailCart(item.product, 1, item.variation)}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justifyContent: 'space-between',
-                          padding: '1rem',
-                          borderRadius: 'var(--border-radius-md)',
-                          cursor: 'pointer',
-                          background: 'var(--bg-card)',
-                          minHeight: '160px',
-                          border: '1px solid var(--border-color)',
-                          transition: 'all var(--transition-fast)'
-                        }}
-                      >
-                        <div>
-                          {/* Product Name */}
-                          <h4 style={{ 
-                            fontSize: '1rem', 
-                            fontWeight: 700, 
-                            marginBottom: '0.5rem', 
-                            color: 'var(--text-primary)',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden',
-                            lineHeight: '1.2'
-                          }} title={item.name}>
-                            {item.name}
-                          </h4>
-                          
-                          {/* Mark & Lot Badge row */}
-                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
-                            {item.variation && (
-                              <span style={{ 
-                                fontSize: '0.85rem', 
-                                padding: '0.2rem 0.5rem', 
-                                background: 'var(--primary-light)', 
-                                color: 'var(--primary)', 
-                                borderRadius: '4px', 
-                                fontWeight: 800 
+              {gridMode === 'standard' ? (
+                <>
+                  <h4 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    {productSearch.trim() ? `SEARCH RESULTS (${filteredDisplayItems.length})` : 'ALL PRODUCTS & BATCH MARKS'}
+                  </h4>
+                  
+                  {filteredDisplayItems.length > 0 ? (
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(215px, 1fr))', 
+                      gap: '0.75rem',
+                      maxHeight: '480px',
+                      overflowY: 'auto',
+                      paddingRight: '0.25rem'
+                    }}>
+                      {filteredDisplayItems.map((item) => {
+                        const isLowStock = item.currentStock <= item.product.minStockAlert;
+                        return (
+                          <div
+                            key={item.id}
+                            className="glass-panel glass-panel-hover"
+                            onClick={() => addToRetailCart(item.product, 1, item.variation)}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              padding: '1rem',
+                              borderRadius: 'var(--border-radius-md)',
+                              cursor: 'pointer',
+                              background: 'var(--bg-card)',
+                              minHeight: '160px',
+                              border: '1px solid var(--border-color)',
+                              transition: 'all var(--transition-fast)'
+                            }}
+                          >
+                            <div>
+                              {/* Product Name */}
+                              <h4 style={{ 
+                                fontSize: '1rem', 
+                                fontWeight: 700, 
+                                marginBottom: '0.5rem', 
+                                color: 'var(--text-primary)',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                lineHeight: '1.2'
+                              }} title={item.name}>
+                                {item.name}
+                              </h4>
+                              
+                              {/* Mark & Lot Badge row */}
+                              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
+                                {item.variation && (
+                                  <span style={{ 
+                                    fontSize: '0.85rem', 
+                                    padding: '0.2rem 0.5rem', 
+                                    background: 'var(--primary-light)', 
+                                    color: 'var(--primary)', 
+                                    borderRadius: '4px', 
+                                    fontWeight: 800 
+                                  }}>
+                                    Mark: {item.mark}
+                                  </span>
+                                )}
+                                <span style={{ 
+                                  fontSize: '0.85rem', 
+                                  padding: '0.2rem 0.5rem', 
+                                  background: 'var(--warning-light)', 
+                                  color: 'var(--warning)', 
+                                  borderRadius: '4px', 
+                                  fontWeight: 800 
+                                }}>
+                                  Lot: {item.lotNo}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div>
+                              {/* Stock & Unit */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Stock:</span>
+                                <span className={`badge ${isLowStock ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.78rem', padding: '0.1rem 0.45rem' }}>
+                                  {Number(item.currentStock.toFixed(3))} {item.unit}
+                                </span>
+                              </div>
+
+                              {/* Price */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem' }}>
+                                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
+                                  ₹{item.salesPrice.toFixed(2)}
+                                </span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                  per {item.unit}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '2rem 1rem', 
+                      color: 'var(--text-muted)', 
+                      border: '1px dashed var(--border-color)', 
+                      borderRadius: 'var(--border-radius-sm)',
+                      fontSize: '0.85rem'
+                    }}>
+                      No products or marks match your search query.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <h4 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    {productSearch.trim() ? `SEARCH RESULTS (${filteredCommissionInwardItems.length})` : 'AVAILABLE COMMISSION LOTS'}
+                  </h4>
+
+                  {filteredCommissionInwardItems.length > 0 ? (
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(215px, 1fr))', 
+                      gap: '0.75rem',
+                      maxHeight: '480px',
+                      overflowY: 'auto',
+                      paddingRight: '0.25rem'
+                    }}>
+                      {filteredCommissionInwardItems.map((item) => {
+                        const isOut = item.remainingBags <= 0;
+                        return (
+                          <div
+                            key={`${item.commissionPurchaseId}-${item.mark}`}
+                            className="glass-panel glass-panel-hover"
+                            onClick={() => {
+                              if (isOut) {
+                                showToast(`Error: Lot is out of stock!`, 'danger');
+                                return;
+                              }
+                              const onionProduct = products.find(p => p.name.toLowerCase().includes('onion') || p.category.toLowerCase().includes('onion')) || products[0];
+                              if (!onionProduct) {
+                                showToast(`Error: Please create at least one product in the catalog first`, 'danger');
+                                return;
+                              }
+                              
+                              let matchedVariation = onionProduct.variations?.find(v => v.mark.toLowerCase() === item.mark.toLowerCase());
+                              const variation: ProductVariation = matchedVariation || {
+                                id: `var-${item.commissionPurchaseId}-${item.mark}`,
+                                mark: item.mark,
+                                purchasePrice: 0,
+                                salesPrice: item.salesPrice || onionProduct.salesPrice,
+                                currentStock: item.remainingBags,
+                                unit: 'Kg'
+                              };
+                              
+                              const finalVar = {
+                                ...variation,
+                                currentStock: item.remainingBags,
+                                salesPrice: item.salesPrice || variation.salesPrice,
+                                unit: 'Kg'
+                              };
+
+                              addToRetailCart(onionProduct, 1, finalVar, item.lotNo, item.commissionPurchaseId);
+                            }}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between',
+                              padding: '1rem',
+                              borderRadius: 'var(--border-radius-md)',
+                              cursor: 'pointer',
+                              background: 'var(--bg-card)',
+                              minHeight: '160px',
+                              border: '1px solid var(--border-color)',
+                              opacity: isOut ? 0.6 : 1,
+                              transition: 'all var(--transition-fast)'
+                            }}
+                          >
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
+                                <span style={{ 
+                                  fontSize: '0.75rem', 
+                                  padding: '0.15rem 0.4rem', 
+                                  background: 'var(--primary-light)', 
+                                  color: 'var(--primary)', 
+                                  borderRadius: '4px', 
+                                  fontWeight: 800 
+                                }}>
+                                  Lot: {item.lotNo}
+                                </span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                  {new Date(item.date).toLocaleDateString()}
+                                </span>
+                              </div>
+                              
+                              <h4 style={{ 
+                                fontSize: '1rem', 
+                                fontWeight: 700, 
+                                marginBottom: '0.35rem', 
+                                color: 'var(--text-primary)'
                               }}>
                                 Mark: {item.mark}
-                              </span>
-                            )}
-                            <span style={{ 
-                              fontSize: '0.85rem', 
-                              padding: '0.2rem 0.5rem', 
-                              background: 'var(--warning-light)', 
-                              color: 'var(--warning)', 
-                              borderRadius: '4px', 
-                              fontWeight: 800 
-                            }}>
-                              Lot: {item.lotNo}
-                            </span>
-                          </div>
-                        </div>
+                              </h4>
+                              
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                                Supplier: <strong>{item.supplierName}</strong>
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                Lorry: {item.lorryNo} {item.vehicleMark && item.vehicleMark !== '—' ? `(${item.vehicleMark})` : ''}
+                              </div>
+                            </div>
 
-                        <div>
-                          {/* Stock & Unit */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Stock:</span>
-                            <span className={`badge ${isLowStock ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.78rem', padding: '0.1rem 0.45rem' }}>
-                              {Number(item.currentStock.toFixed(3))} {item.unit}
-                            </span>
+                            <div style={{ marginTop: '0.5rem', borderTop: '1px dashed var(--border-color)', paddingTop: '0.5rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Bags (In / Stock):</span>
+                                <span className={`badge ${isOut ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '0.78rem', padding: '0.1rem 0.45rem' }}>
+                                  {item.initialBags} / <strong>{item.remainingBags}</strong>
+                                </span>
+                              </div>
+                            </div>
                           </div>
-
-                          {/* Price */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem' }}>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)' }}>
-                              ₹{item.salesPrice.toFixed(2)}
-                            </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                              per {item.unit}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '2rem 1rem', 
-                  color: 'var(--text-muted)', 
-                  border: '1px dashed var(--border-color)', 
-                  borderRadius: 'var(--border-radius-sm)',
-                  fontSize: '0.85rem'
-                }}>
-                  No products or marks match your search query.
-                </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '2rem 1rem', 
+                      color: 'var(--text-muted)', 
+                      border: '1px dashed var(--border-color)', 
+                      borderRadius: 'var(--border-radius-sm)',
+                      fontSize: '0.85rem'
+                    }}>
+                      No commission lots match your search query.
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -977,8 +1202,15 @@ export const POS: React.FC = () => {
                         ? Array.from(new Set([item.variation.unit || item.product.unit, item.variation.unit2].filter(Boolean) as string[]))
                         : ['Pcs', 'Kg', 'Litre', 'Box', 'Packet', 'Gram', 'Bag'];
                       return (
-                        <tr key={item.product.id + (item.variation ? '-' + item.variation.id : '')} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                          <td style={{ padding: '0.5rem', fontWeight: 600 }}>{item.product.name}</td>
+                        <tr key={`${item.product.id}-${item.variation?.id || 'base'}-${item.lotNo || 'none'}-${item.commissionPurchaseId || 'none'}`} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '0.5rem', fontWeight: 600 }}>
+                            {item.product.name}
+                            {item.lotNo && (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block' }}>
+                                Lot: {item.lotNo}
+                              </span>
+                            )}
+                          </td>
                           <td style={{ padding: '0.5rem' }}>
                             {item.variation ? (
                               <span style={{ fontSize: '0.65rem', padding: '0.05rem 0.25rem', background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '3px', fontWeight: 600 }}>
@@ -1003,7 +1235,7 @@ export const POS: React.FC = () => {
                                 textAlign: 'center'
                               }}
                               value={item.customUnit || (item.variation ? (item.variation.unit || item.product.unit) : item.product.unit)}
-                              onChange={(e) => updateRetailUnit(item.product.id, e.target.value, item.variation?.id)}
+                              onChange={(e) => updateRetailUnit(item.product.id, e.target.value, item.variation?.id, item.lotNo, item.commissionPurchaseId)}
                             >
                               {availableUnits.map((u) => (
                                 <option key={u} value={u}>{u}</option>
@@ -1030,7 +1262,7 @@ export const POS: React.FC = () => {
                               placeholder="-"
                               onChange={(e) => {
                                 const val = parseInt(e.target.value) || 0;
-                                updateRetailBags(item.product.id, val, item.variation?.id);
+                                updateRetailBags(item.product.id, val, item.variation?.id, item.lotNo, item.commissionPurchaseId);
                               }}
                             />
                           </td>
@@ -1042,9 +1274,9 @@ export const POS: React.FC = () => {
                                 onClick={() => {
                                   const newQty = Number((item.qty - 1).toFixed(3));
                                   if (newQty <= 0) {
-                                    removeFromRetailCart(item.product.id, item.variation?.id);
+                                    removeFromRetailCart(item.product.id, item.variation?.id, item.lotNo, item.commissionPurchaseId);
                                   } else {
-                                    updateRetailQty(item.product.id, newQty, item.variation?.id);
+                                    updateRetailQty(item.product.id, newQty, item.variation?.id, item.lotNo, item.commissionPurchaseId);
                                   }
                                 }}
                                 style={{ padding: '0.15rem', borderRadius: '4px', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -1070,19 +1302,19 @@ export const POS: React.FC = () => {
                                 step="0.001"
                                 onChange={(e) => {
                                   const val = parseFloat(e.target.value) || 0;
-                                  updateRetailQty(item.product.id, val, item.variation?.id);
+                                  updateRetailQty(item.product.id, val, item.variation?.id, item.lotNo, item.commissionPurchaseId);
                                 }}
                                 onBlur={(e) => {
                                   const val = parseFloat(e.target.value);
                                   if (isNaN(val) || val <= 0) {
-                                    removeFromRetailCart(item.product.id, item.variation?.id);
+                                    removeFromRetailCart(item.product.id, item.variation?.id, item.lotNo, item.commissionPurchaseId);
                                   }
                                 }}
                               />
                               <button 
                                 type="button"
                                 className="btn btn-secondary btn-icon" 
-                                onClick={() => updateRetailQty(item.product.id, Number((item.qty + 1).toFixed(3)), item.variation?.id)}
+                                onClick={() => updateRetailQty(item.product.id, Number((item.qty + 1).toFixed(3)), item.variation?.id, item.lotNo, item.commissionPurchaseId)}
                                 style={{ padding: '0.15rem', borderRadius: '4px', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                               >
                                 <Plus size={10} />
@@ -1108,7 +1340,7 @@ export const POS: React.FC = () => {
                               value={price === 0 ? '' : price}
                               min="0"
                               step="0.01"
-                              onChange={(e) => updateRetailPrice(item.product.id, parseFloat(e.target.value) || 0, item.variation?.id)}
+                              onChange={(e) => updateRetailPrice(item.product.id, parseFloat(e.target.value) || 0, item.variation?.id, item.lotNo, item.commissionPurchaseId)}
                             />
                           </td>
                           <td style={{ padding: '0.5rem', textAlign: 'right', fontWeight: 700 }}>
@@ -1118,7 +1350,7 @@ export const POS: React.FC = () => {
                             <button 
                               type="button"
                               className="btn btn-ghost btn-icon" 
-                              onClick={() => removeFromRetailCart(item.product.id, item.variation?.id)}
+                              onClick={() => removeFromRetailCart(item.product.id, item.variation?.id, item.lotNo, item.commissionPurchaseId)}
                               style={{ padding: '0.2rem', color: 'var(--danger)' }}
                             >
                               <Trash2 size={12} />
@@ -1476,11 +1708,28 @@ export const POS: React.FC = () => {
 
               {/* Credit Mode: customer selector + warning */}
               {paymentMethod === 'Credit' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'rgba(239,68,68,0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--danger)', fontWeight: 600, fontSize: '0.85rem' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  gap: '0.75rem', 
+                  background: (cartTotal - Number(cashPaid)) < 0 ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', 
+                  padding: '1rem', 
+                  borderRadius: '8px', 
+                  border: (cartTotal - Number(cashPaid)) < 0 ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(239,68,68,0.3)' 
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem', 
+                    color: (cartTotal - Number(cashPaid)) < 0 ? 'var(--success)' : 'var(--danger)', 
+                    fontWeight: 600, 
+                    fontSize: '0.85rem' 
+                  }}>
                     <AlertCircle size={15} />
                     {Number(cashPaid) > 0 
-                      ? `Credit Sale — ₹${(cartTotal - Number(cashPaid)).toFixed(2)} will be added to customer's outstanding` 
+                      ? ((cartTotal - Number(cashPaid)) < 0 
+                        ? `Overpayment — ₹${(Number(cashPaid) - cartTotal).toFixed(2)} will be subtracted from customer's outstanding`
+                        : `Credit Sale — ₹${(cartTotal - Number(cashPaid)).toFixed(2)} will be added to customer's outstanding`)
                       : "Credit Sale — Full amount will be added to customer's outstanding"}
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1493,14 +1742,18 @@ export const POS: React.FC = () => {
                       <option value="">— Select Customer —</option>
                       {dealers.map(d => (
                         <option key={d.id} value={d.id}>
-                          {d.name} {d.outstanding > 0 ? `(Due: ₹${d.outstanding.toFixed(2)})` : ''}
+                          {d.name} {d.outstanding !== 0 ? `(Balance: ₹${d.outstanding.toFixed(2)})` : ''}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderTop: '1px dashed rgba(239,68,68,0.3)', paddingTop: '0.5rem' }}>
-                    <span style={{ fontWeight: 600 }}>Credit Amount:</span>
-                    <span style={{ fontWeight: 800, color: 'var(--danger)', fontSize: '1rem' }}>₹{(cartTotal - Number(cashPaid)).toFixed(2)}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderTop: (cartTotal - Number(cashPaid)) < 0 ? '1px dashed rgba(16,185,129,0.3)' : '1px dashed rgba(239,68,68,0.3)', paddingTop: '0.5rem' }}>
+                    <span style={{ fontWeight: 600 }}>{(cartTotal - Number(cashPaid)) < 0 ? 'Deduction Amount:' : 'Credit Amount:'}</span>
+                    <span style={{ 
+                      fontWeight: 800, 
+                      color: (cartTotal - Number(cashPaid)) < 0 ? 'var(--success)' : 'var(--danger)', 
+                      fontSize: '1rem' 
+                    }}>₹{Math.abs(cartTotal - Number(cashPaid)).toFixed(2)}</span>
                   </div>
                 </div>
               )}

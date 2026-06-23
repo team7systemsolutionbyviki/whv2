@@ -39,6 +39,8 @@ export interface SaleItem {
   variationMark?: string;
   weight?: number; // total item weight in KG
   bags?: number; // total bags for this item
+  lotNo?: string;
+  commissionPurchaseId?: string;
 }
 
 export interface Sale {
@@ -102,16 +104,55 @@ export interface Purchase {
   dueAmount: number;
 }
 
+export interface CommissionPurchaseItem {
+  mark: string;
+  bags: number;
+  salesPrice?: number;
+}
+
+export interface CommissionPurchase {
+  id: string;
+  billNo: string;
+  date: string;
+  supplierId: string;
+  fromCity?: string;
+  toCity?: string;
+  lorryNo?: string;
+  vehicleMark?: string;
+  transportName?: string;
+  driverMob?: string;
+  truckOwnerMob?: string;
+  driverName?: string;
+  licenseNo?: string;
+  items: CommissionPurchaseItem[];
+  freightRate?: number;
+  totalFreight: number;
+  advance: number;
+  balanceFreight: number;
+  courierAddress?: string;
+  bankName?: string;
+  bankAccNo?: string;
+  bankIFSC?: string;
+  bankBranch?: string;
+  totalBags: number;
+  grossWeight?: number;
+  tareWeight?: number;
+  netWeight?: number;
+  notes?: string;
+}
+
 export interface Dealer {
   id: string;
   name: string;
   phone: string;
   address: string;
   outstanding: number; // outstanding dues
+  category?: string;
   email?: string;
   creditLimit?: number;
   gstin?: string;
   lastReminderSent?: string; // ISO date of last WhatsApp/SMS reminder
+  overdueDaysThreshold?: number;
 }
 
 export interface DealerPayment {
@@ -122,6 +163,7 @@ export interface DealerPayment {
   type?: 'credit' | 'debit';
   referenceNo?: string;
   note?: string;
+  customerCategory?: string;
 }
 
 export interface Supplier {
@@ -151,16 +193,30 @@ export interface PattiRecord {
   truckDriverName?: string;
   freightRate?: number;
   advance?: number;
+  dcNo?: string;
+  dcDate?: string;
+  loadingDate?: string;
+  place?: string;
   items: { id: string; itemName: string; rate: number; qty: number; weight: number; amount: number }[];
   expenses: {
     rent: number;
     loading: number;
     commission: number;
     otherList: PattiOtherExpense[];
+    marketFee?: number;
+    levi?: number;
+    associationFund?: number;
+    saleExp?: number;
+    loadingHamali?: number;
+    cashAdvance?: number;
+    phoneExp?: number;
+    aadatCommission?: number;
+    otherExpense?: number;
   };
   lessAmount: number;
   notes: string;
   savedAt: string;
+  grandTotal?: number;
 }
 
 export interface Expense {
@@ -180,6 +236,8 @@ export interface SupplierPayment {
   date: string;
   amount: number;
   referenceNo?: string;
+  type?: 'credit' | 'debit';
+  note?: string;
 }
 
 export interface StockTransaction {
@@ -191,6 +249,9 @@ export interface StockTransaction {
   qty: number;
   referenceNo: string; // invoice or transaction id
   reason?: string;
+  commissionPurchaseId?: string;
+  variationMark?: string;
+  bagsQty?: number;
 }
 
 export interface Settings {
@@ -210,6 +271,8 @@ export interface Settings {
   showTotalWeightReceipt?: boolean;
   showGstReceipt?: boolean;
   showQrPaymentReceipt?: boolean;
+  customerCategories?: string[];
+  overdueDaysThreshold?: number;
 }
 
 // Initial Mock Data
@@ -248,7 +311,9 @@ const INITIAL_SETTINGS: Settings = {
   bankIFSC: 'SBIN0001234',
   showTotalWeightReceipt: true,
   showGstReceipt: true,
-  showQrPaymentReceipt: true
+  showQrPaymentReceipt: true,
+  customerCategories: ['Wholesale', 'Retail', 'Hotel', 'Local', 'Outstation'],
+  overdueDaysThreshold: 15
 };
 
 const INITIAL_SALES: Sale[] = [
@@ -331,6 +396,7 @@ const KEYS = {
   DEALER_PAYMENTS: 'billing_dealer_payments',
   PATTIS: 'billing_pattis',
   EXPENSES: 'billing_expenses',
+  COMMISSION_PURCHASES: 'billing_commission_purchases',
 };
 
 // Helper methods to read/write from localStorage
@@ -346,7 +412,8 @@ const getFirebasePath = (key: string): string | null => {
     case 'billing_supplier_payments': return 'supplier_payments';
     case 'billing_dealer_payments': return 'dealer_payments';
     case 'billing_pattis': return 'pattis';
-    case 'billing_expenses': return 'expenses';
+     case 'billing_expenses': return 'expenses';
+    case 'billing_commission_purchases': return 'commission_purchases';
     case 'login_history': return 'login_history';
     case 'app_users': return 'app_users';
     default: return null;
@@ -491,7 +558,7 @@ export const DB = {
     const dealers = DB.getDealers();
     const idx = dealers.findIndex((d) => d.id === dealerId);
     if (idx >= 0) {
-      dealers[idx].outstanding = Math.max(0, dealers[idx].outstanding + diff);
+      dealers[idx].outstanding = dealers[idx].outstanding + diff;
       setJSON(KEYS.DEALERS, dealers);
     }
   },
@@ -526,7 +593,7 @@ export const DB = {
     const suppliers = DB.getSuppliers();
     const idx = suppliers.findIndex((s) => s.id === supplierId);
     if (idx >= 0) {
-      suppliers[idx].due = Math.max(0, suppliers[idx].due + diff);
+      suppliers[idx].due = suppliers[idx].due + diff;
       setJSON(KEYS.SUPPLIERS, suppliers);
     }
   },
@@ -581,12 +648,11 @@ export const DB = {
 
         // Dealer credit updates
         if (sale.dealerId) {
-          const paid = (sale.paymentMethod === 'Credit') ? 0 :
-                       ((sale.paymentDetails.cashAmount || 0) + 
-                        (sale.paymentDetails.upiAmount || 0) + 
-                        (sale.paymentDetails.cardAmount || 0));
+          const paid = (sale.paymentDetails.cashAmount || 0) + 
+                       (sale.paymentDetails.upiAmount || 0) + 
+                       (sale.paymentDetails.cardAmount || 0);
           const outstanding = sale.total - paid;
-          if (outstanding > 0) {
+          if (outstanding !== 0) {
             DB.updateDealerOutstanding(sale.dealerId, outstanding);
           }
         }
@@ -712,6 +778,23 @@ export const DB = {
     setJSON(KEYS.EXPENSES, expenses.filter((e) => e.id !== id));
   },
 
+  // Commission Purchases
+  getCommissionPurchases: (): CommissionPurchase[] => getJSON<CommissionPurchase[]>(KEYS.COMMISSION_PURCHASES, []),
+  saveCommissionPurchase: (p: CommissionPurchase): void => {
+    const list = DB.getCommissionPurchases();
+    const idx = list.findIndex(item => item.id === p.id);
+    if (idx >= 0) {
+      list[idx] = p;
+    } else {
+      list.push(p);
+    }
+    setJSON(KEYS.COMMISSION_PURCHASES, list);
+  },
+  deleteCommissionPurchase: (id: string): void => {
+    const list = DB.getCommissionPurchases();
+    setJSON(KEYS.COMMISSION_PURCHASES, list.filter(item => item.id !== id));
+  },
+
   // Settings
   getSettings: (): Settings => getJSON<Settings>(KEYS.SETTINGS, INITIAL_SETTINGS),
   saveSettings: (settings: Settings): void => {
@@ -726,6 +809,7 @@ export const DB = {
       suppliers: DB.getSuppliers(),
       sales: DB.getSales(),
       purchases: DB.getPurchases(),
+      commissionPurchases: DB.getCommissionPurchases(),
       stockHistory: DB.getStockHistory(),
       pattis: DB.getPattis(),
       expenses: DB.getExpenses(),
@@ -743,6 +827,7 @@ export const DB = {
         if (data.suppliers) setJSON(KEYS.SUPPLIERS, data.suppliers);
         if (data.sales) setJSON(KEYS.SALES, data.sales);
         if (data.purchases) setJSON(KEYS.PURCHASES, data.purchases);
+        if (data.commissionPurchases) setJSON(KEYS.COMMISSION_PURCHASES, data.commissionPurchases);
         if (data.stock_history) setJSON(KEYS.STOCK_HISTORY, data.stock_history);
         if (data.stockHistory) setJSON(KEYS.STOCK_HISTORY, data.stockHistory); // handle both cases
         if (data.pattis) setJSON(KEYS.PATTIS, data.pattis);
@@ -765,6 +850,7 @@ export const DB = {
         suppliers: DB.getSuppliers(),
         sales: DB.getSales(),
         purchases: DB.getPurchases(),
+        commissionPurchases: DB.getCommissionPurchases(),
         stockHistory: DB.getStockHistory(),
         pattis: DB.getPattis(),
         expenses: DB.getExpenses(),
