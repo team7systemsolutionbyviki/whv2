@@ -27,6 +27,16 @@ import {
   Tag
 } from 'lucide-react';
 
+const formatDateDDMMYYYY = (dateInput: string | Date | undefined) => {
+  if (!dateInput) return '-';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '-';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 const parseCSV = (text: string): string[][] => {
   const lines: string[][] = [];
   let row: string[] = [];
@@ -115,6 +125,7 @@ export const CustomerManagement: React.FC = () => {
   const [ledgerDateFrom, setLedgerDateFrom] = useState('');
   const [ledgerDateTo, setLedgerDateTo] = useState('');
   const [ledgerSearch, setLedgerSearch] = useState('');
+  const [ledgerCategoryFilter, setLedgerCategoryFilter] = useState('All');
 
   // Payment collection
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -360,7 +371,7 @@ export const CustomerManagement: React.FC = () => {
           </tr>
           <tr>
             <td class="bold">Date & Time:</td>
-            <td>\${new Date(payment.date).toLocaleString()}</td>
+            <td>\${formatDateDDMMYYYY(payment.date)} \${new Date(payment.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
           </tr>
           <tr>
             <td class="bold">Customer:</td>
@@ -725,7 +736,7 @@ export const CustomerManagement: React.FC = () => {
     const rows = ledgerEntries.map((e, i) => `
       <tr style="border-bottom:1px solid #e5e7eb;">
         <td style="padding:6px 8px;">${i + 1}</td>
-        <td style="padding:6px 8px;">${new Date(e.date).toLocaleDateString()}</td>
+        <td style="padding:6px 8px;">${formatDateDDMMYYYY(e.date)}</td>
         <td style="padding:6px 8px;">${e.description}</td>
         <td style="padding:6px 8px;text-align:right;color:${e.credit > 0 ? '#16a34a' : '#6b7280'};">${e.credit > 0 ? '₹' + e.credit.toFixed(2) : '-'}</td>
         <td style="padding:6px 8px;text-align:right;color:${e.debit > 0 ? '#dc2626' : '#6b7280'};">${e.debit > 0 ? '₹' + e.debit.toFixed(2) : '-'}</td>
@@ -746,24 +757,16 @@ export const CustomerManagement: React.FC = () => {
             <h3 style="margin:0;font-size:15px;color:#4f46e5;">CUSTOMER LEDGER</h3>
             <p style="font-size:12px;margin:2px 0;">Customer: <strong>${selectedDealerLedger.name}</strong></p>
             <p style="font-size:12px;margin:2px 0;">Phone: ${selectedDealerLedger.phone}</p>
-            ${ledgerDateFrom || ledgerDateTo ? `<p style="font-size:11px;margin:2px 0;">Period: ${ledgerDateFrom || 'Start'} to ${ledgerDateTo || 'Today'}</p>` : ''}
+            ${ledgerDateFrom || ledgerDateTo ? `<p style="font-size:11px;margin:2px 0;">Period: ${ledgerDateFrom ? formatDateDDMMYYYY(ledgerDateFrom) : 'Start'} to ${ledgerDateTo ? formatDateDDMMYYYY(ledgerDateTo) : 'Today'}</p>` : ''}
             <p style="font-size:12px;margin:2px 0;">Outstanding: <strong style="color:#dc2626;">₹${selectedDealerLedger.outstanding.toFixed(2)}</strong></p>
           </div>
         </div>
         <table>
           <thead><tr><th>S.No</th><th>Date</th><th>Description</th><th style="text-align:right;">Amount In</th><th style="text-align:right;">Amount Out</th><th style="text-align:right;">Balance Amount</th></tr></thead>
-          <tbody>${rows}</tbody>
-          <tfoot>
-            <tr style="background:#f9fafb;font-weight:700;">
-              <td colspan="3" style="padding:8px;text-align:right;">TOTAL</td>
-              <td style="padding:8px;text-align:right;color:#16a34a;">₹${ledgerTotalCredit.toFixed(2)}</td>
-              <td style="padding:8px;text-align:right;color:#dc2626;">₹${ledgerTotalDebit.toFixed(2)}</td>
-              <td style="padding:8px;text-align:right;color:${ledgerTotalDebit - ledgerTotalCredit > 0 ? '#dc2626' : '#16a34a'};">₹${(ledgerTotalDebit - ledgerTotalCredit).toFixed(2)}</td>
-            </tr>
-          </tfoot>
+          <tbody>\${rows}</tbody>
         </table>
         <div style="margin-top:32px;display:flex;justify-content:space-between;">
-          <div style="font-size:11px;color:#6b7280;">Printed on: ${new Date().toLocaleString()}</div>
+          <div style="font-size:11px;color:#6b7280;">Printed on: ${formatDateDDMMYYYY(new Date())} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
           <div style="width:180px;text-align:center;">
             <div style="border-top:1px solid #333;padding-top:4px;font-size:11px;">Authorized Signatory</div>
           </div>
@@ -798,7 +801,7 @@ export const CustomerManagement: React.FC = () => {
         ...dealerPays.map(p => p.date)
       ].filter(Boolean);
       const latestDate = dates.reduce((max, dt) => dt > max ? dt : max, '');
-      const lastActiveStr = latestDate ? new Date(latestDate).toLocaleDateString() : 'Never';
+      const lastActiveStr = latestDate ? formatDateDDMMYYYY(latestDate) : 'Never';
 
       const dueVal = d.outstanding > 0 ? `₹${d.outstanding.toFixed(2)}` : '-';
       const advVal = d.outstanding < 0 ? `₹${Math.abs(d.outstanding).toFixed(2)}` : '-';
@@ -895,7 +898,7 @@ export const CustomerManagement: React.FC = () => {
           </div>
           <div class="report-details">
             <h3>CUSTOMER BALANCE SHEET REPORT</h3>
-            <p>Generated: <strong>${new Date().toLocaleString()}</strong></p>
+            <p>Generated: <strong>${formatDateDDMMYYYY(new Date())} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></p>
             <p>Total Customers: <strong>${sortedDealers.length}</strong></p>
           </div>
         </div>
@@ -935,6 +938,124 @@ export const CustomerManagement: React.FC = () => {
           <div style="width: 200px; text-align: center; border-top: 1px solid #9ca3af; padding-top: 6px;">
             Authorized Signatory
           </div>
+        </div>
+      </body>
+      </html>
+    `);
+    w.document.close();
+    setTimeout(() => w.print(), 300);
+  };
+
+  const handlePrintCollection = () => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+
+    const activeCategory = subTab === 'ledger' ? ledgerCategoryFilter : selectedCategoryFilter;
+
+    const targetDealers = dealers
+      .filter(d => activeCategory === 'All' || (d.category || 'Wholesale') === activeCategory)
+      .filter(d => d.outstanding > 0)
+      .sort((a, b) => b.outstanding - a.outstanding);
+
+    const totalDues = targetDealers.reduce((sum, d) => sum + d.outstanding, 0);
+
+    const rows = targetDealers.map((d, i) => {
+      const dealerSales = sales.filter(s => s.dealerId === d.id && s.status === 'completed');
+      const lastSaleDate = dealerSales.length > 0
+        ? dealerSales.reduce((max, s) => s.date > max ? s.date : max, '')
+        : '';
+      const threshold = d.overdueDaysThreshold || overdueDaysThreshold;
+      let dueDateStr = 'Immediate';
+      if (lastSaleDate) {
+        const dueDate = new Date(lastSaleDate);
+        dueDate.setDate(dueDate.getDate() + threshold);
+        dueDateStr = dueDate.toLocaleDateString();
+      }
+
+      return `
+        <tr style="border-bottom: 1px dashed #000;">
+          <td style="padding: 6px 2px; text-align: center;">${i + 1}</td>
+          <td style="padding: 6px 2px;">
+            <div style="font-weight: bold;">${d.name}</div>
+            <div style="font-size: 10px; color: #333;">Ph: ${d.phone}</div>
+            ${d.address ? `<div style="font-size: 10px; color: #333;">Add: ${d.address}</div>` : ''}
+            <div style="font-size: 10px; color: #dc2626; font-weight: bold; margin-top: 2px;">Due Date: ${dueDateStr}</div>
+          </td>
+          <td style="padding: 6px 2px; text-align: right; font-weight: bold; vertical-align: middle;">
+            ₹${d.outstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    w.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Collection Print - ${activeCategory}</title>
+        <style>
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            width: 80mm;
+            margin: 0;
+            padding: 4px;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #000;
+          }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .bold { font-weight: bold; }
+          .divider { border-top: 1px dashed #000; margin: 6px 0; }
+          .header h2 { margin: 0 0 4px 0; font-size: 16px; text-transform: uppercase; }
+          .header p { margin: 2px 0; font-size: 11px; }
+          .details-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+          .details-table td, .details-table th { padding: 4px 2px; vertical-align: top; }
+          .footer { margin-top: 24px; }
+          @media print {
+            body { width: 100%; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header text-center">
+          <h2>${settings.shopName}</h2>
+          <p>${settings.address}</p>
+          <p>Phone: ${settings.phone}</p>
+          <div class="divider"></div>
+          <div class="bold" style="font-size: 13px; margin-top: 4px; text-transform: uppercase;">COLLECTION PRINT</div>
+          <p style="font-size: 11px; margin: 2px 0;">Category: <strong>${activeCategory}</strong></p>
+          <p style="font-size: 10px; margin: 2px 0;">Date: ${new Date().toLocaleString()}</p>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <table class="details-table">
+          <thead>
+            <tr style="border-bottom: 1px solid #000;">
+              <th style="width: 10%; text-align: center;">#</th>
+              <th style="width: 60%; text-align: left;">Customer Details</th>
+              <th style="width: 30%; text-align: right;">Amount Due</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows || `<tr><td colspan="3" class="text-center" style="padding: 10px;">No pending collections</td></tr>`}
+          </tbody>
+        </table>
+        
+        <div class="divider"></div>
+        
+        <table style="width: 100%; font-size: 13px; font-weight: bold; margin-top: 4px;">
+          <tr>
+            <td>TOTAL DUE:</td>
+            <td class="text-right">₹${totalDues.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          </tr>
+        </table>
+        
+        <div class="divider"></div>
+        
+        <div class="footer text-center" style="font-size: 10px; margin-top: 15px;">
+          <p>End of Collection List</p>
         </div>
       </body>
       </html>
@@ -988,6 +1109,10 @@ export const CustomerManagement: React.FC = () => {
           
           <button className="btn btn-secondary" onClick={handlePrintCustomerReport}>
             <Printer size={15} /> Print Full Report
+          </button>
+
+          <button className="btn btn-secondary" onClick={handlePrintCollection} title="Collection Print (Thermal / 80mm format)">
+            <Printer size={15} /> Collection Print
           </button>
         </div>
       </div>
@@ -1069,6 +1194,11 @@ export const CustomerManagement: React.FC = () => {
               <button className="btn btn-secondary" onClick={handlePrintCustomerReport} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem' }}>
                 <Printer size={15} />
                 <span>Print Report</span>
+              </button>
+
+              <button className="btn btn-secondary" onClick={handlePrintCollection} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem' }}>
+                <Printer size={15} />
+                <span>Collection Print</span>
               </button>
               
               <button 
@@ -1208,7 +1338,7 @@ export const CustomerManagement: React.FC = () => {
                   {lastSale && (
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
                       <Calendar size={11} style={{ verticalAlign: 'middle', marginRight: '3px' }} />
-                      Last transaction: {new Date(lastSale).toLocaleDateString()} ({daysSince(lastSale)} days ago)
+                      Last transaction: {formatDateDDMMYYYY(lastSale)} ({daysSince(lastSale)} days ago)
                     </div>
                   )}
 
@@ -1285,7 +1415,7 @@ export const CustomerManagement: React.FC = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1.5rem', alignItems: 'start' }}>
           {/* Left: Customer list */}
           <div className="glass-panel" style={{ padding: '1rem' }}>
-            <div style={{ marginBottom: '0.75rem' }}>
+            <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
@@ -1297,9 +1427,21 @@ export const CustomerManagement: React.FC = () => {
                   style={{ paddingLeft: '28px', padding: '0.4rem 0.4rem 0.4rem 28px', fontSize: '0.8rem' }}
                 />
               </div>
+              <select
+                className="form-control"
+                style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem', height: '32px' }}
+                value={ledgerCategoryFilter}
+                onChange={e => setLedgerCategoryFilter(e.target.value)}
+              >
+                <option value="All">All Categories</option>
+                {CUSTOMER_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '65vh', overflowY: 'auto' }}>
               {dealers
+                .filter(d => ledgerCategoryFilter === 'All' || (d.category || 'Wholesale') === ledgerCategoryFilter)
                 .filter(d => d.name.toLowerCase().includes(ledgerSearch.toLowerCase()) || d.phone.includes(ledgerSearch))
                 .map(d => (
                   <div
@@ -1426,7 +1568,7 @@ export const CustomerManagement: React.FC = () => {
                         {ledgerEntries.map((e, i) => (
                           <tr key={e.id}>
                             <td>{i + 1}</td>
-                            <td style={{ whiteSpace: 'nowrap' }}>{new Date(e.date).toLocaleDateString()}</td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{formatDateDDMMYYYY(e.date)}</td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -1460,16 +1602,6 @@ export const CustomerManagement: React.FC = () => {
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot>
-                        <tr style={{ fontWeight: 700, borderTop: '2px solid var(--border-color)' }}>
-                          <td colSpan={3} style={{ textAlign: 'right', padding: '0.6rem' }}>TOTAL</td>
-                          <td style={{ textAlign: 'right', padding: '0.6rem', color: 'var(--success)' }}>₹{ledgerTotalCredit.toFixed(2)}</td>
-                          <td style={{ textAlign: 'right', padding: '0.6rem', color: 'var(--danger)' }}>₹{ledgerTotalDebit.toFixed(2)}</td>
-                          <td style={{ textAlign: 'right', padding: '0.6rem', color: (ledgerTotalDebit - ledgerTotalCredit) > 0 ? 'var(--danger)' : 'var(--success)' }}>
-                            ₹{(ledgerTotalDebit - ledgerTotalCredit).toFixed(2)}
-                          </td>
-                        </tr>
-                      </tfoot>
                     </table>
                   </div>
                 ) : (

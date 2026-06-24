@@ -19,7 +19,8 @@ import {
   Receipt,
   X,
   Printer,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Languages
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -29,6 +30,16 @@ export const Sidebar: React.FC = () => {
   // Logout shift summary states
   const [showLogoutModal, setShowLogoutModal] = React.useState(false);
   const [isPrintingSummary, setIsPrintingSummary] = React.useState(false);
+
+  const [tamilTyping, setTamilTyping] = React.useState(() => {
+    return localStorage.getItem('tamil_typing') === 'true';
+  });
+
+  const toggleTamilTyping = () => {
+    const newVal = !tamilTyping;
+    setTamilTyping(newVal);
+    localStorage.setItem('tamil_typing', String(newVal));
+  };
 
   // Calculate today's shift summary for current staff
   const shiftSummary = React.useMemo(() => {
@@ -305,6 +316,31 @@ export const Sidebar: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* Tamil Typing Toggle */}
+        <button
+          onClick={toggleTamilTyping}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.75rem 1rem',
+            borderRadius: 'var(--border-radius-sm)',
+            border: tamilTyping ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+            background: tamilTyping ? 'var(--primary-light)' : 'var(--bg-input)',
+            color: tamilTyping ? 'var(--primary)' : 'var(--text-secondary)',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            width: '100%',
+            justifyContent: 'center',
+            transition: 'all var(--transition-fast)'
+          }}
+          className="glass-panel-hover"
+        >
+          <Languages size={16} />
+          <span>{tamilTyping ? 'Tamil Typing: ON' : 'Tamil Typing: OFF'}</span>
+        </button>
 
         {/* Theme Switcher Button */}
         <button

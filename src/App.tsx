@@ -15,6 +15,7 @@ import { Expenses } from './pages/Expenses';
 import { CommissionGoods } from './pages/CommissionGoods';
 import { Login } from './pages/Login';
 import { X, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { transliterateText } from './utils/translit';
 
 const AppContent: React.FC = () => {
   const { activeTab, setActiveTab, toasts, removeToast } = useApp();
@@ -28,6 +29,76 @@ const AppContent: React.FC = () => {
       setActiveTab('pos');
     }
   }, [user, userRole, activeTab, setActiveTab]);
+
+  React.useEffect(() => {
+    const handleInput = (e: Event) => {
+      const isTamilEnabled = localStorage.getItem('tamil_typing') === 'true';
+      if (!isTamilEnabled) return;
+
+      const target = e.target as HTMLInputElement | HTMLTextAreaElement;
+      if (!target) return;
+
+      const isTextInput = target.tagName === 'INPUT' && (target.type === 'text' || !target.type);
+      const isTextArea = target.tagName === 'TEXTAREA';
+      if (!isTextInput && !isTextArea) return;
+
+      const name = (target.name || '').toLowerCase();
+      const id = (target.id || '').toLowerCase();
+      const placeholder = (target.placeholder || '').toLowerCase();
+
+      // Exclude numerical, code, reference, phone, email and sensitive fields (allow search inputs to support Tamil query typing)
+      const isExcluded = 
+        name.includes('phone') || id.includes('phone') ||
+        name.includes('email') || id.includes('email') ||
+        name.includes('gstin') || id.includes('gstin') ||
+        name.includes('ref') || id.includes('ref') ||
+        name.includes('reference') || id.includes('reference') ||
+        name.includes('password') || id.includes('password') ||
+        name.includes('code') || id.includes('code') ||
+        name.includes('number') || id.includes('number') ||
+        name.includes('qty') || id.includes('qty') ||
+        name.includes('price') || id.includes('price') ||
+        name.includes('amount') || id.includes('amount') ||
+        target.type === 'email' || target.type === 'password' || target.type === 'tel' || target.type === 'number';
+
+      if (isExcluded) return;
+
+      const originalValue = target.value;
+      
+      // Only transliterate on blur OR when user types space / punctuation (to allow full words/digraphs to form)
+      const shouldTransliterate = 
+        e.type === 'blur' || 
+        /[\s.,!?;:()\-+=*\/]$/.test(originalValue);
+
+      if (!shouldTransliterate) return;
+
+      const newValue = transliterateText(originalValue);
+
+      if (originalValue !== newValue) {
+        const selectionStart = target.selectionStart || 0;
+        const selectionEnd = target.selectionEnd || 0;
+
+        const prototype = target.tagName === 'INPUT' ? window.HTMLInputElement.prototype : window.HTMLTextAreaElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+        if (setter) {
+          setter.call(target, newValue);
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+
+          const lengthDiff = newValue.length - originalValue.length;
+          const newCursor = Math.max(0, selectionStart + lengthDiff);
+          target.setSelectionRange(newCursor, newCursor);
+        }
+      }
+    };
+
+    document.addEventListener('input', handleInput, true);
+    document.addEventListener('blur', handleInput, true);
+    return () => {
+      document.removeEventListener('input', handleInput, true);
+      document.removeEventListener('blur', handleInput, true);
+    };
+  }, []);
 
   if (loading) {
     return (

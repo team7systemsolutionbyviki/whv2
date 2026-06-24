@@ -15,11 +15,22 @@ import {
   CreditCard, 
   User, 
   Info, 
-  ArrowUpDown 
+  ArrowUpDown,
+  Printer 
 } from 'lucide-react';
 
+const formatDateDDMMYYYY = (dateInput: string | Date | undefined) => {
+  if (!dateInput) return '-';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '-';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
 export const Expenses: React.FC = () => {
-  const { expenses, refreshData, showToast } = useApp();
+  const { expenses, refreshData, showToast, settings } = useApp();
   const { user } = useAuth();
 
   // Search & Filter state
@@ -276,6 +287,147 @@ export const Expenses: React.FC = () => {
     showToast('Expenses exported successfully', 'success');
   };
 
+  const handlePrintExpenses = () => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+
+    const rows = sortedExpenses.map((exp, i) => `
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 8px; text-align: center;">${i + 1}</td>
+        <td style="padding: 8px;">${formatDateDDMMYYYY(exp.date)} ${new Date(exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+        <td style="padding: 8px;"><span style="background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px;">${exp.category}</span></td>
+        <td style="padding: 8px; text-align: right; font-weight: bold; color: #dc2626;">₹${exp.amount.toFixed(2)}</td>
+        <td style="padding: 8px;">${exp.paymentMethod}</td>
+        <td style="padding: 8px; font-family: monospace; font-size: 11px;">${exp.referenceNo || '-'}</td>
+        <td style="padding: 8px; font-size: 11px;">${exp.note || '-'}</td>
+        <td style="padding: 8px; font-size: 11px;">${(exp.createdBy || '').split('@')[0]}</td>
+      </tr>
+    `).join('');
+
+    w.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Expenses Report</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            color: #111;
+            margin: 24px;
+            line-height: 1.4;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+          }
+          th {
+            background: #f3f4f6;
+            padding: 10px 8px;
+            border: 1px solid #d1d5db;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: #374151;
+            text-transform: uppercase;
+          }
+          td {
+            border: 1px solid #e5e7eb;
+            font-size: 12px;
+            padding: 8px;
+          }
+          .header-container {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 3px double #111;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+          }
+          .shop-details h2 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 800;
+            color: #1e1b4b;
+          }
+          .shop-details p {
+            margin: 3px 0;
+            font-size: 12px;
+            color: #4b5563;
+          }
+          .report-details {
+            text-align: right;
+          }
+          .report-details h3 {
+            margin: 0;
+            font-size: 16px;
+            color: #4f46e5;
+            letter-spacing: 0.5px;
+          }
+          .report-details p {
+            font-size: 12px;
+            margin: 3px 0;
+            color: #4b5563;
+          }
+          @media print {
+            body { margin: 15px; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header-container">
+          <div class="shop-details">
+            <h2>${settings.shopName || 'Billing System'}</h2>
+            <p>${settings.address || ''}</p>
+            <p>Phone: ${settings.phone || ''}</p>
+          </div>
+          <div class="report-details">
+            <h3>EXPENSES AUDIT REPORT</h3>
+            <p>Generated: <strong>${formatDateDDMMYYYY(new Date())} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></p>
+            <p>Category Filter: <strong>${categoryFilter}</strong></p>
+            <p>Payment Filter: <strong>${paymentFilter}</strong></p>
+            <p>Date Range: <strong>${dateFilter === 'custom' ? `${formatDateDDMMYYYY(customStartDate)} to ${formatDateDDMMYYYY(customEndDate)}` : dateFilter.toUpperCase()}</strong></p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40px; text-align: center;">#</th>
+              <th>Date & Time</th>
+              <th>Category</th>
+              <th style="text-align: right;">Amount</th>
+              <th>Payment Method</th>
+              <th>Reference ID</th>
+              <th>Note / Description</th>
+              <th>Recorded By</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows || '<tr><td colspan="8" style="text-align: center; padding: 12px;">No expenses match the selected filters.</td></tr>'}
+          </tbody>
+          <tfoot>
+            <tr style="background: #f9fafb; font-weight: 700; border-top: 2px solid #111;">
+              <td colspan="3" style="padding: 10px; text-align: right; font-size: 13px;">TOTAL EXPENSES:</td>
+              <td style="padding: 10px; text-align: right; font-size: 13px; color: #dc2626; font-weight: 800;">₹${totalPeriodExpenses.toFixed(2)}</td>
+              <td colspan="4"></td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div style="margin-top: 40px; display: flex; justify-content: space-between; font-size: 11px; color: #6b7280;">
+          <div>Report printed via Billing System</div>
+          <div style="width: 200px; text-align: center; border-top: 1px solid #9ca3af; padding-top: 6px;">
+            Authorized Signatory
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+    w.document.close();
+    setTimeout(() => w.print(), 300);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       {/* Header */}
@@ -294,6 +446,17 @@ export const Expenses: React.FC = () => {
           >
             <Download size={16} />
             <span>Export CSV</span>
+          </button>
+
+          <button 
+            className="btn btn-secondary" 
+            onClick={handlePrintExpenses} 
+            disabled={filteredExpenses.length === 0}
+            title="Print Expenses Report"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem' }}
+          >
+            <Printer size={16} />
+            <span>Print Report</span>
           </button>
           
           <button className="btn btn-primary" onClick={openAddModal} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem' }}>
@@ -479,7 +642,7 @@ export const Expenses: React.FC = () => {
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
-                        <span>{new Date(exp.date).toLocaleString()}</span>
+                        <span>{formatDateDDMMYYYY(exp.date)} {new Date(exp.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </td>
                     <td>

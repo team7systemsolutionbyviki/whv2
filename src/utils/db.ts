@@ -493,6 +493,7 @@ export const DB = {
     getJSON(KEYS.DEALER_PAYMENTS, []);
     getJSON(KEYS.PATTIS, []);
     getJSON(KEYS.EXPENSES, []);
+    getJSON(KEYS.COMMISSION_PURCHASES, []);
   },
 
   reset: () => {
@@ -505,6 +506,9 @@ export const DB = {
     removeKey(KEYS.STOCK_HISTORY);
     removeKey(KEYS.PATTIS);
     removeKey(KEYS.EXPENSES);
+    removeKey(KEYS.DEALER_PAYMENTS);
+    removeKey(KEYS.SUPPLIER_PAYMENTS);
+    removeKey(KEYS.COMMISSION_PURCHASES);
     DB.initialize();
   },
 
@@ -813,7 +817,9 @@ export const DB = {
       stockHistory: DB.getStockHistory(),
       pattis: DB.getPattis(),
       expenses: DB.getExpenses(),
-      settings: DB.getSettings()
+      settings: DB.getSettings(),
+      dealerPayments: DB.getDealerPayments(),
+      supplierPayments: DB.getSupplierPayments()
     };
     return JSON.stringify(data, null, 2);
   },
@@ -832,6 +838,8 @@ export const DB = {
         if (data.stockHistory) setJSON(KEYS.STOCK_HISTORY, data.stockHistory); // handle both cases
         if (data.pattis) setJSON(KEYS.PATTIS, data.pattis);
         if (data.expenses) setJSON(KEYS.EXPENSES, data.expenses);
+        if (data.dealerPayments) setJSON(KEYS.DEALER_PAYMENTS, data.dealerPayments);
+        if (data.supplierPayments) setJSON(KEYS.SUPPLIER_PAYMENTS, data.supplierPayments);
         setJSON(KEYS.SETTINGS, data.settings);
         return true;
       }
@@ -854,7 +862,9 @@ export const DB = {
         stockHistory: DB.getStockHistory(),
         pattis: DB.getPattis(),
         expenses: DB.getExpenses(),
-        settings: DB.getSettings()
+        settings: DB.getSettings(),
+        dealerPayments: DB.getDealerPayments(),
+        supplierPayments: DB.getSupplierPayments()
       };
 
       const timestamp = new Date().toISOString();

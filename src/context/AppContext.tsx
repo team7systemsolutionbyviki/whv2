@@ -153,6 +153,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { key: 'login_history', path: 'login_history', defaultValue: [] },
         { key: 'app_users', path: 'app_users', defaultValue: [] },
         { key: 'billing_expenses', path: 'expenses', defaultValue: [] },
+        { key: 'billing_dealer_payments', path: 'dealer_payments', defaultValue: [] },
+        { key: 'billing_pattis', path: 'pattis', defaultValue: [] },
+        { key: 'billing_commission_purchases', path: 'commission_purchases', defaultValue: [] },
       ];
 
       keysToListen.forEach(({ key, path, defaultValue }) => {

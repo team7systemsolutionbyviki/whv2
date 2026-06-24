@@ -192,6 +192,8 @@ export const Login: React.FC = () => {
               </label>
               <input
                 type="text"
+                id="login-email"
+                name="email"
                 className="form-control"
                 placeholder="viki or you@wolsales.com"
                 required
@@ -227,6 +229,8 @@ export const Login: React.FC = () => {
               <div style={{ position: 'relative' }}>
                 <input
                   type={showPassword ? "text" : "password"}
+                  id="login-password"
+                  name="password"
                   className="form-control"
                   placeholder="••••••••"
                   required
