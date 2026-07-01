@@ -3,7 +3,7 @@ import { DB, Product, Sale, Purchase, Dealer, Supplier, Settings, StockTransacti
 import { rtdb, isMockMode } from '../utils/firebase';
 import { ref, onValue } from 'firebase/database';
 
-export type ActiveTab = 'products' | 'pos' | 'wholesale' | 'purchases' | 'purchase_commission_goods' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers' | 'patti' | 'expenses';
+export type ActiveTab = 'dashboard' | 'products' | 'pos' | 'wholesale' | 'purchases' | 'purchase_commission_goods' | 'inventory' | 'reports' | 'settings' | 'profit_adder' | 'customers' | 'patti' | 'expenses';
 
 export interface CartItem {
   product: Product;
@@ -109,7 +109,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation & Theme
-  const [activeTab, setActiveTab] = useState<ActiveTab>('pos');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [darkMode, setDarkModeState] = useState<boolean>(true);
 
   // Database

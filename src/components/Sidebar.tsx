@@ -20,7 +20,8 @@ import {
   X,
   Printer,
   FileSpreadsheet,
-  Languages
+  Languages,
+  LayoutDashboard
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -89,6 +90,7 @@ export const Sidebar: React.FC = () => {
   const lowStockCount = products.filter(p => p.currentStock <= p.minStockAlert).length;
 
   const menuItems = [
+    { id: 'dashboard' as ActiveTab, name: 'Dashboard', icon: LayoutDashboard },
     { id: 'pos' as ActiveTab, name: 'POS Sales', icon: ShoppingCart },
     { id: 'products' as ActiveTab, name: 'Products', icon: ShoppingBag },
     { id: 'customers' as ActiveTab, name: 'Customers', icon: UserCheck },

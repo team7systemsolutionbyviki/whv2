@@ -14,6 +14,7 @@ import { Patti } from './pages/Patti';
 import { Expenses } from './pages/Expenses';
 import { CommissionGoods } from './pages/CommissionGoods';
 import { Login } from './pages/Login';
+import { Dashboard } from './pages/Dashboard';
 import { X, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { transliterateText } from './utils/translit';
 
@@ -151,6 +152,8 @@ const AppContent: React.FC = () => {
     }
 
     switch (activeTab) {
+      case 'dashboard':
+        return <Dashboard />;
       case 'products':
         return <Products />;
       case 'pos':
@@ -174,7 +177,7 @@ const AppContent: React.FC = () => {
       case 'expenses':
         return <Expenses />;
       default:
-        return <POS />;
+        return <Dashboard />;
     }
   };
 
