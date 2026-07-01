@@ -66,6 +66,7 @@ export interface Sale {
   dealerId?: string;
   returnedItems?: { productId: string; qty: number; reason: string }[];
   createdBy?: string;
+  othersCharge?: number;
 }
 
 export interface PurchaseItem {
@@ -102,6 +103,9 @@ export interface Purchase {
   total: number;
   paymentStatus: 'Paid' | 'Due';
   dueAmount: number;
+  grossWeight?: number;
+  tareWeight?: number;
+  netWeight?: number;
 }
 
 export interface CommissionPurchaseItem {
@@ -397,6 +401,7 @@ const KEYS = {
   PATTIS: 'billing_pattis',
   EXPENSES: 'billing_expenses',
   COMMISSION_PURCHASES: 'billing_commission_purchases',
+  CATEGORIES: 'billing_categories',
 };
 
 // Helper methods to read/write from localStorage
@@ -412,8 +417,9 @@ const getFirebasePath = (key: string): string | null => {
     case 'billing_supplier_payments': return 'supplier_payments';
     case 'billing_dealer_payments': return 'dealer_payments';
     case 'billing_pattis': return 'pattis';
-     case 'billing_expenses': return 'expenses';
+    case 'billing_expenses': return 'expenses';
     case 'billing_commission_purchases': return 'commission_purchases';
+    case 'billing_categories': return 'categories';
     case 'login_history': return 'login_history';
     case 'app_users': return 'app_users';
     default: return null;
@@ -494,6 +500,7 @@ export const DB = {
     getJSON(KEYS.PATTIS, []);
     getJSON(KEYS.EXPENSES, []);
     getJSON(KEYS.COMMISSION_PURCHASES, []);
+    getJSON(KEYS.CATEGORIES, ['Groceries', 'Dairy', 'FMCG', 'Personal Care', 'Household', 'Snacks', 'Beverages']);
   },
 
   reset: () => {
@@ -509,6 +516,7 @@ export const DB = {
     removeKey(KEYS.DEALER_PAYMENTS);
     removeKey(KEYS.SUPPLIER_PAYMENTS);
     removeKey(KEYS.COMMISSION_PURCHASES);
+    removeKey(KEYS.CATEGORIES);
     DB.initialize();
   },
 
@@ -803,6 +811,12 @@ export const DB = {
   getSettings: (): Settings => getJSON<Settings>(KEYS.SETTINGS, INITIAL_SETTINGS),
   saveSettings: (settings: Settings): void => {
     setJSON(KEYS.SETTINGS, settings);
+  },
+
+  // Categories
+  getCategories: (): string[] => getJSON<string[]>(KEYS.CATEGORIES, ['Groceries', 'Dairy', 'FMCG', 'Personal Care', 'Household', 'Snacks', 'Beverages']),
+  saveCategories: (cats: string[]): void => {
+    setJSON(KEYS.CATEGORIES, cats);
   },
 
   // Backup & Restore

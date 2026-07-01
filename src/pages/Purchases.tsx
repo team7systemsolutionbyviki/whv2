@@ -57,6 +57,14 @@ export const Purchases: React.FC = () => {
   const [vehicleMark, setVehicleMark] = useState('');
   const [freightRate, setFreightRate] = useState<number>(0);
   const [advance, setAdvance] = useState<number>(0);
+  const [grossWeight, setGrossWeight] = useState<string>('');
+  const [tareWeight, setTareWeight] = useState<string>('');
+
+  const netWeight = useMemo(() => {
+    const gw = parseFloat(grossWeight) || 0;
+    const tw = parseFloat(tareWeight) || 0;
+    return Math.max(0, gw - tw);
+  }, [grossWeight, tareWeight]);
 
   const formatPurchaseUnit = (unitStr: string) => {
     const u = (unitStr || '').toLowerCase().trim();
@@ -393,7 +401,10 @@ export const Purchases: React.FC = () => {
       advance: advance || undefined,
       total: finalTotal,
       paymentStatus,
-      dueAmount: paymentStatus === 'Due' ? finalTotal : 0
+      dueAmount: paymentStatus === 'Due' ? finalTotal : 0,
+      grossWeight: grossWeight ? parseFloat(grossWeight) || undefined : undefined,
+      tareWeight: tareWeight ? parseFloat(tareWeight) || undefined : undefined,
+      netWeight: grossWeight && tareWeight ? (parseFloat(grossWeight) - parseFloat(tareWeight)) || undefined : undefined,
     };
 
     DB.savePurchase(purchaseData);
@@ -416,6 +427,8 @@ export const Purchases: React.FC = () => {
     setVehicleMark('');
     setFreightRate(0);
     setAdvance(0);
+    setGrossWeight('');
+    setTareWeight('');
     showToast(`Purchase ${invoiceNo} recorded. Stock auto-updated!`, 'success');
   };
 
@@ -1001,7 +1014,20 @@ export const Purchases: React.FC = () => {
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label>Quantity</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ margin: 0 }}>Quantity</label>
+                      {netWeight > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: 0, fontSize: '0.68rem', color: 'var(--primary)', height: 'auto', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                          onClick={() => setTempQty(netWeight)}
+                          title={`Click to copy calculated net weight: ${netWeight} Kg`}
+                        >
+                          Use Net Wt
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="number"
                       className="form-control"
@@ -1223,6 +1249,39 @@ export const Purchases: React.FC = () => {
                     placeholder="e.g. LOT-123"
                     value={lotNo}
                     onChange={(e) => setLotNo(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                <div className="form-group">
+                  <label style={{ fontSize: '0.75rem' }}>Gross Weight (Kg)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    placeholder="Gross Weight"
+                    value={grossWeight}
+                    onChange={(e) => setGrossWeight(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '0.75rem' }}>Tare Weight (Kg)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    placeholder="Tare Weight"
+                    value={tareWeight}
+                    onChange={(e) => setTareWeight(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label style={{ fontSize: '0.75rem' }}>Net Weight (Kg)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    disabled
+                    style={{ background: 'var(--bg-card)', color: 'var(--primary)', fontWeight: 'bold' }}
+                    value={netWeight || ''}
                   />
                 </div>
               </div>

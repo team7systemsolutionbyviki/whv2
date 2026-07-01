@@ -42,6 +42,8 @@ export const POS: React.FC = () => {
     clearRetailCart,
     retailDiscount,
     setRetailDiscount,
+    retailOthersCharge,
+    setRetailOthersCharge,
     customerName,
     setCustomerName,
     customerPhone,
@@ -52,7 +54,8 @@ export const POS: React.FC = () => {
     deleteHeldCart,
     settings,
     purchases,
-    sales
+    sales,
+    categories
   } = useApp();
 
   // Search & Barcode state
@@ -63,6 +66,7 @@ export const POS: React.FC = () => {
   const [variationSelectorProduct, setVariationSelectorProduct] = useState<Product | null>(null);
   
   const [gridMode, setGridMode] = useState<'standard' | 'commission'>('standard');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   const commissionPurchases = useMemo(() => {
     return DB.getCommissionPurchases();
@@ -199,19 +203,23 @@ export const POS: React.FC = () => {
     return items;
   }, [products, purchases]);
 
-  // Filter display items based on search query
+  // Filter display items based on search query and category
   const filteredDisplayItems = useMemo(() => {
+    let items = displayItems;
+    if (selectedCategory !== 'All') {
+      items = items.filter(item => item.product.category?.trim() === selectedCategory);
+    }
     if (!productSearch.trim()) {
-      return displayItems;
+      return items;
     }
     const query = productSearch.toLowerCase().trim();
-    return displayItems.filter(item => 
+    return items.filter(item => 
       item.name.toLowerCase().includes(query) ||
       item.product.barcode.includes(query) ||
       (item.mark && item.mark.toLowerCase().includes(query)) ||
       (item.lotNo && item.lotNo.toLowerCase().includes(query))
     );
-  }, [displayItems, productSearch]);
+  }, [displayItems, productSearch, selectedCategory]);
 
   // Modals state
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -325,7 +333,7 @@ export const POS: React.FC = () => {
   const taxRateDecimal = settings.taxRate / 100;
   // tax is inclusive
   const cartTax = Number((cartSubtotal * (taxRateDecimal / (1 + taxRateDecimal))).toFixed(2));
-  const cartTotal = Math.max(0, cartSubtotal - retailDiscount);
+  const cartTotal = Math.max(0, cartSubtotal - retailDiscount + retailOthersCharge);
   const totalProfit = retailCart.reduce((sum, item) => {
     const cost = isPricePerKg(item)
       ? getCartItemCost(item) * getCartItemWeightInKg(item)
@@ -334,7 +342,7 @@ export const POS: React.FC = () => {
     // proportional discount adjustment
     const itemDiscount = cartSubtotal > 0 ? (revenue / cartSubtotal) * retailDiscount : 0;
     return sum + (revenue - cost - itemDiscount);
-  }, 0);
+  }, 0) + retailOthersCharge;
 
   // Handle barcode submit (barcode scanner simulation)
   const handleBarcodeSubmit = (e: React.FormEvent) => {
@@ -409,12 +417,35 @@ export const POS: React.FC = () => {
     for (const item of retailCart) {
       const prod = products.find(p => p.id === item.product.id);
       if (!prod) continue;
-      const stockLimit = item.variation
-        ? prod.variations?.find(v => v.id === item.variation?.id)?.currentStock || 0
-        : prod.currentStock;
-      if (item.qty > stockLimit) {
-        showToast(`Error: Insufficient stock for ${item.product.name} (Available: ${stockLimit})`, 'danger');
-        return;
+      if (item.commissionPurchaseId) {
+        // Commission lot stock check (by bags)
+        const cp = commissionPurchases.find(p => p.id === item.commissionPurchaseId);
+        const cpItem = cp?.items.find(i => i.mark === item.variation?.mark);
+        if (cpItem) {
+          // Calculate sold bags for this lot across all completed sales
+          const soldBags = sales.reduce((sum, sale) => {
+            if (sale.status === 'completed') {
+              const saleItem = sale.items.find(si => si.commissionPurchaseId === item.commissionPurchaseId && si.variationMark === item.variation?.mark);
+              return sum + (saleItem?.bags || 0);
+            }
+            return sum;
+          }, 0);
+          const remainingBags = cpItem.bags - soldBags;
+          const cartBags = item.bags || 0;
+          if (cartBags > remainingBags) {
+            showToast(`Error: Insufficient stock for Commission Lot ${item.variation?.mark || ''} (Available: ${remainingBags} bags, Cart: ${cartBags} bags)`, 'danger');
+            return;
+          }
+        }
+      } else {
+        // Standard product stock check (by qty)
+        const stockLimit = item.variation
+          ? prod.variations?.find(v => v.id === item.variation?.id)?.currentStock || 0
+          : prod.currentStock;
+        if (item.qty > stockLimit) {
+          showToast(`Error: Insufficient stock for ${item.product.name} (Available: ${stockLimit})`, 'danger');
+          return;
+        }
       }
     }
 
@@ -452,6 +483,7 @@ export const POS: React.FC = () => {
       tax: cartTax,
       total: cartTotal,
       profit: Number(totalProfit.toFixed(2)),
+      othersCharge: retailOthersCharge,
       paymentMethod,
       paymentDetails: {
         cashAmount: paymentMethod === 'Cash' || paymentMethod === 'Mixed' || paymentMethod === 'Credit' ? Number(cashPaid) : 0,
@@ -720,6 +752,47 @@ export const POS: React.FC = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {gridMode === 'standard' ? (
                 <>
+                  {/* Category Filter Bar */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Filter by Category
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      gap: '0.5rem', 
+                      overflowX: 'auto', 
+                      paddingBottom: '0.5rem',
+                      scrollbarWidth: 'thin',
+                      scrollbarColor: 'var(--border-color) transparent'
+                    }} className="category-scroll">
+                      {['All', ...categories].map(cat => {
+                        const isActive = selectedCategory === cat;
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setSelectedCategory(cat)}
+                            style={{
+                              whiteSpace: 'nowrap',
+                              padding: '0.35rem 0.8rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              borderRadius: '20px',
+                              border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                              background: isActive ? 'var(--primary-light)' : 'var(--bg-card)',
+                              color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease',
+                              boxShadow: isActive ? '0 2px 6px rgba(99,102,241,0.2)' : 'none'
+                            }}
+                          >
+                            {cat}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <h4 style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
                     {productSearch.trim() ? `SEARCH RESULTS (${filteredDisplayItems.length})` : 'ALL PRODUCTS & BATCH MARKS'}
                   </h4>
@@ -735,11 +808,18 @@ export const POS: React.FC = () => {
                     }}>
                       {filteredDisplayItems.map((item) => {
                         const isLowStock = item.currentStock <= item.product.minStockAlert;
+                        const isOut = item.currentStock <= 0;
                         return (
                           <div
                             key={item.id}
                             className="glass-panel glass-panel-hover"
-                            onClick={() => addToRetailCart(item.product, 1, item.variation)}
+                            onClick={() => {
+                              if (isOut) {
+                                showToast(`Error: Product is out of stock!`, 'danger');
+                                return;
+                              }
+                              addToRetailCart(item.product, 1, item.variation);
+                            }}
                             style={{
                               display: 'flex',
                               flexDirection: 'column',
@@ -750,6 +830,7 @@ export const POS: React.FC = () => {
                               background: 'var(--bg-card)',
                               minHeight: '160px',
                               border: '1px solid var(--border-color)',
+                              opacity: isOut ? 0.6 : 1,
                               transition: 'all var(--transition-fast)'
                             }}
                           >
@@ -1391,6 +1472,18 @@ export const POS: React.FC = () => {
                 onChange={(e) => setRetailDiscount(Math.min(cartSubtotal, parseFloat(e.target.value) || 0))}
                 min="0"
                 max={cartSubtotal}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+              <span>Other Charges (₹):</span>
+              <input
+                type="number"
+                className="form-control"
+                style={{ width: '80px', padding: '0.2rem 0.4rem', fontSize: '0.8rem', textAlign: 'right', height: '26px' }}
+                value={retailOthersCharge || ''}
+                onChange={(e) => setRetailOthersCharge(parseFloat(e.target.value) || 0)}
+                min="0"
               />
             </div>
 

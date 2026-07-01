@@ -48,7 +48,15 @@ const parseCSV = (text: string): string[][] => {
 };
 
 export const Products: React.FC = () => {
-  const { products, refreshData, showToast } = useApp();
+  const { 
+    products, 
+    refreshData, 
+    showToast, 
+    categories, 
+    addCategory, 
+    renameCategory, 
+    deleteCategory 
+  } = useApp();
   
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,10 +65,13 @@ export const Products: React.FC = () => {
   // Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [editingCategoryName, setEditingCategoryName] = useState<{ oldName: string, newName: string } | null>(null);
   
   const [name, setName] = useState('');
   const [barcode, setBarcode] = useState('');
-  const [category, setCategory] = useState('FMCG');
+  const [category, setCategory] = useState(categories[0] || 'Groceries');
   const [unit, setUnit] = useState('Pcs');
   const [purchasePrice, setPurchasePrice] = useState<number>(0);
   const [salesPrice, setSalesPrice] = useState<number>(0);
@@ -72,8 +83,7 @@ export const Products: React.FC = () => {
   const [variations, setVariations] = useState<ProductVariation[]>([]);
 
   // Categories & Units Presets
-  const categories = ['All', 'Groceries', 'Dairy', 'FMCG', 'Personal Care', 'Household', 'Snacks', 'Beverages'];
-  const formCategories = categories.filter(c => c !== 'All');
+  const formCategories = categories;
   const units = ['Pcs', 'Kg', 'Litre', 'Box', 'Packet', 'Gram', 'Bag'];
 
   // Excel / CSV Export & Import Handlers
@@ -457,6 +467,19 @@ export const Products: React.FC = () => {
             />
           </label>
 
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => {
+              setNewCategoryName('');
+              setEditingCategoryName(null);
+              setIsCategoryModalOpen(true);
+            }} 
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem' }}
+          >
+            <Tag size={16} />
+            <span>Manage Categories</span>
+          </button>
+
           <button className="btn btn-primary" onClick={openAddModal} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 1rem' }}>
             <Plus size={16} />
             <span>Add Product</span>
@@ -479,7 +502,7 @@ export const Products: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
-          {categories.map((cat) => (
+          {['All', ...categories].map((cat) => (
             <button
               key={cat}
               onClick={() => setCategoryFilter(cat)}
@@ -933,6 +956,168 @@ export const Products: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Category Management Modal */}
+      {isCategoryModalOpen && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h3>Manage Categories</h3>
+              <button 
+                type="button" 
+                className="btn-close" 
+                onClick={() => setIsCategoryModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Add Category Form */}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="New Category Name..."
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const trimmed = newCategoryName.trim();
+                      if (trimmed) {
+                        addCategory(trimmed);
+                        setNewCategoryName('');
+                      }
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const trimmed = newCategoryName.trim();
+                    if (trimmed) {
+                      addCategory(trimmed);
+                      setNewCategoryName('');
+                    }
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}
+                >
+                  <Plus size={16} />
+                  <span>Add</span>
+                </button>
+              </div>
+
+              {/* Categories list */}
+              <div style={{ 
+                maxHeight: '280px', 
+                overflowY: 'auto', 
+                border: '1px solid var(--border-color)', 
+                borderRadius: 'var(--border-radius-sm)',
+                background: 'var(--bg-input)'
+              }}>
+                <table className="custom-table" style={{ width: '100%', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-sidebar)' }}>
+                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>Category Name</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'center', width: '120px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map((cat) => {
+                      const isEditing = editingCategoryName?.oldName === cat;
+                      return (
+                        <tr key={cat}>
+                          <td style={{ padding: '0.5rem' }}>
+                            {isEditing ? (
+                              <input
+                                type="text"
+                                className="form-control"
+                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.85rem', height: '28px' }}
+                                value={editingCategoryName.newName}
+                                onChange={(e) => setEditingCategoryName(prev => prev ? { ...prev, newName: e.target.value } : null)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    renameCategory(editingCategoryName.oldName, editingCategoryName.newName);
+                                    setEditingCategoryName(null);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span style={{ fontWeight: 600 }}>{cat}</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center' }}>
+                              {isEditing ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', borderRadius: '4px', height: '26px' }}
+                                    onClick={() => {
+                                      renameCategory(editingCategoryName.oldName, editingCategoryName.newName);
+                                      setEditingCategoryName(null);
+                                    }}
+                                    title="Save"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.2rem 0.4rem', fontSize: '0.75rem', borderRadius: '4px', height: '26px' }}
+                                    onClick={() => setEditingCategoryName(null)}
+                                    title="Cancel"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary btn-icon"
+                                    style={{ padding: '0.2rem', color: 'var(--text-muted)' }}
+                                    onClick={() => setEditingCategoryName({ oldName: cat, newName: cat })}
+                                    title="Rename"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-icon"
+                                    style={{ padding: '0.2rem', color: 'var(--danger)' }}
+                                    onClick={() => {
+                                      if (confirm(`Are you sure you want to delete category "${cat}"? Products in this category will be reassigned.`)) {
+                                        deleteCategory(cat);
+                                      }
+                                    }}
+                                    title="Delete"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setIsCategoryModalOpen(false)}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

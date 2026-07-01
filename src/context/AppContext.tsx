@@ -65,6 +65,8 @@ interface AppContextType {
   clearRetailCart: () => void;
   retailDiscount: number; // flat discount
   setRetailDiscount: (disc: number) => void;
+  retailOthersCharge: number;
+  setRetailOthersCharge: (charge: number) => void;
   customerName: string;
   setCustomerName: (name: string) => void;
   customerPhone: string;
@@ -95,6 +97,12 @@ interface AppContextType {
   toasts: ToastMessage[];
   showToast: (text: string, type?: 'success' | 'warning' | 'danger' | 'info') => void;
   removeToast: (id: string) => void;
+
+  // Categories Management
+  categories: string[];
+  addCategory: (name: string) => void;
+  renameCategory: (oldName: string, newName: string) => void;
+  deleteCategory: (name: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -116,10 +124,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [settings, setSettings] = useState<Settings>({} as Settings);
   const [pattis, setPattis] = useState<PattiRecord[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
 
   // Cart & Customers
   const [retailCart, setRetailCart] = useState<CartItem[]>([]);
   const [retailDiscount, setRetailDiscount] = useState<number>(0);
+  const [retailOthersCharge, setRetailOthersCharge] = useState<number>(0);
   const [customerName, setCustomerName] = useState<string>('Walking Customer');
   const [customerPhone, setCustomerPhone] = useState<string>('');
 
@@ -156,6 +166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { key: 'billing_dealer_payments', path: 'dealer_payments', defaultValue: [] },
         { key: 'billing_pattis', path: 'pattis', defaultValue: [] },
         { key: 'billing_commission_purchases', path: 'commission_purchases', defaultValue: [] },
+        { key: 'billing_categories', path: 'categories', defaultValue: ['Groceries', 'Dairy', 'FMCG', 'Personal Care', 'Household', 'Snacks', 'Beverages'] },
       ];
 
       keysToListen.forEach(({ key, path, defaultValue }) => {
@@ -289,6 +300,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSettings(DB.getSettings());
     setPattis(DB.getPattis());
     setExpenses(DB.getExpenses());
+    setCategories(DB.getCategories());
   };
 
   const setDarkMode = (dark: boolean) => {
@@ -326,6 +338,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       const stockLimit = variation ? variation.currentStock : product.currentStock;
 
+      if (commissionPurchaseId) {
+        // Commission lot: stockLimit is remainingBags (in bags)
+        if (idx >= 0) {
+          const currentBags = prev[idx].bags || 0;
+          const newBags = currentBags + 1;
+          if (newBags > stockLimit) {
+            showToast(`Error: Cannot exceed available stock (${stockLimit} bags)`, 'danger');
+            const updated = [...prev];
+            const item = updated[idx];
+            item.bags = stockLimit;
+            const avgWeight = currentBags > 0 ? (item.qty / currentBags) : 1;
+            item.qty = Number((stockLimit * avgWeight).toFixed(3));
+            if (item.customWeight !== undefined) {
+              item.customWeight = item.qty;
+            }
+            return updated;
+          }
+          const updated = [...prev];
+          const item = updated[idx];
+          item.bags = newBags;
+          const avgWeight = currentBags > 0 ? (item.qty / currentBags) : 1;
+          item.qty = Number((newBags * avgWeight).toFixed(3));
+          if (item.customWeight !== undefined) {
+            item.customWeight = item.qty;
+          }
+          return updated;
+        }
+        if (stockLimit <= 0) {
+          showToast(`Error: Lot is out of stock!`, 'danger');
+          addedSuccessfully = false;
+          return prev;
+        }
+        return [...prev, { product, qty, variation, customUnit: variation?.unit, lotNo, commissionPurchaseId, bags: 1 }];
+      }
+
+      // Standard product
       if (idx >= 0) {
         const newQty = prev[idx].qty + qty;
         if (newQty > stockLimit) {
@@ -362,16 +410,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRetailCart((prev) => {
       const idx = prev.findIndex((item) => item.product.id === productId && item.variation?.id === variationId && item.lotNo === lotNo && item.commissionPurchaseId === commissionPurchaseId);
       if (idx >= 0) {
-        const prod = prev[idx].product;
-        const stockLimit = prev[idx].variation ? prev[idx].variation!.currentStock : prod.currentStock;
+        const updated = [...prev];
+        const item = updated[idx];
+        if (commissionPurchaseId) {
+          // Commission lot: do not clamp qty (weight) strictly to stockLimit (bags)
+          item.qty = qty;
+          item.customWeight = undefined; // clear weight override on manual qty edit
+          return updated;
+        }
+
+        // Standard product
+        const prod = item.product;
+        const stockLimit = item.variation ? item.variation!.currentStock : prod.currentStock;
         let finalQty = qty;
         if (qty > stockLimit) {
           showToast(`Error: Limited to available stock count of ${stockLimit}`, 'danger');
           finalQty = stockLimit;
         }
-        const updated = [...prev];
-        updated[idx].qty = finalQty;
-        updated[idx].customWeight = undefined; // clear weight override on manual qty edit
+        item.qty = finalQty;
+        item.customWeight = undefined; // clear weight override on manual qty edit
         return updated;
       }
       return prev;
@@ -410,6 +467,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         if (unitWeight > 0) {
           let newQty = Number((weight / unitWeight).toFixed(3));
+          
+          if (commissionPurchaseId) {
+            // Commission lot: do not clamp qty to stockLimit (bags)
+            item.qty = newQty;
+            return updated;
+          }
+
+          // Standard product
           const prod = item.product;
           const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
           if (newQty > stockLimit) {
@@ -433,7 +498,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (idx >= 0) {
         const updated = [...prev];
         const item = updated[idx];
-        item.bags = bags;
+        
+        const prod = item.product;
+        const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
+        
+        let finalBags = bags;
+        if (commissionPurchaseId) {
+          // Commission lot: clamp bags to stockLimit (remainingBags)
+          if (bags > stockLimit) {
+            showToast(`Error: Cannot exceed available stock (${stockLimit} bags)`, 'danger');
+            finalBags = stockLimit;
+          }
+        }
+        
+        item.bags = finalBags;
         
         const unit = (item.customUnit || item.variation?.unit || item.product.unit || '').toLowerCase().trim();
         let unitWeight = 0;
@@ -457,10 +535,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         
         if (unitWeight > 0) {
-          const calculatedWeight = bags * unitWeight;
+          const calculatedWeight = finalBags * unitWeight;
           let newQty = Number((calculatedWeight / unitWeight).toFixed(3));
-          const prod = item.product;
-          const stockLimit = item.variation ? item.variation.currentStock : prod.currentStock;
+          
+          if (commissionPurchaseId) {
+            // Commission lot: do not clamp qty based on stockLimit (bags)
+            item.customWeight = calculatedWeight;
+            item.qty = newQty;
+            return updated;
+          }
+
+          // Standard product
           if (newQty > stockLimit) {
             showToast(`Error: Calculated quantity (${newQty}) exceeds stock count of ${stockLimit}. Clamped to stock count.`, 'danger');
             newQty = stockLimit;
@@ -505,6 +590,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const clearRetailCart = () => {
     setRetailCart([]);
     setRetailDiscount(0);
+    setRetailOthersCharge(0);
     setCustomerName('Walking Customer');
     setCustomerPhone('');
   };
@@ -749,6 +835,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Deleted Held Bill ${id}`, 'danger');
   };
 
+  const addCategory = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (categories.includes(trimmed)) {
+      showToast('Category already exists', 'warning');
+      return;
+    }
+    const updatedCats = [...categories, trimmed].sort();
+    setCategories(updatedCats);
+    DB.saveCategories(updatedCats);
+    showToast(`Category "${trimmed}" added`, 'success');
+  };
+
+  const renameCategory = (oldName: string, newName: string) => {
+    const oldTrimmed = oldName.trim();
+    const newTrimmed = newName.trim();
+    if (!newTrimmed || oldTrimmed === newTrimmed) return;
+    
+    // 1. Update categories list
+    const updatedCats = categories.map(c => c === oldTrimmed ? newTrimmed : c);
+    setCategories(updatedCats);
+    DB.saveCategories(updatedCats);
+    
+    // 2. Update all products using old category name
+    const updatedProducts = products.map(p => {
+      if (p.category === oldTrimmed) {
+        return { ...p, category: newTrimmed };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
+    DB.setJSON('billing_products', updatedProducts);
+    
+    showToast(`Category "${oldTrimmed}" renamed to "${newTrimmed}". Updated products.`, 'success');
+  };
+
+  const deleteCategory = (name: string) => {
+    const trimmed = name.trim();
+    
+    // 1. Remove from categories list
+    const updatedCats = categories.filter(c => c !== trimmed);
+    setCategories(updatedCats);
+    DB.saveCategories(updatedCats);
+    
+    // 2. Update products using this category (reset to 'Groceries' or first available category)
+    const fallbackCategory = updatedCats[0] || 'Groceries';
+    const updatedProducts = products.map(p => {
+      if (p.category === trimmed) {
+        return { ...p, category: fallbackCategory };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
+    DB.setJSON('billing_products', updatedProducts);
+    
+    showToast(`Category "${trimmed}" deleted. Products moved to "${fallbackCategory}".`, 'info');
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -779,6 +923,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearRetailCart,
         retailDiscount,
         setRetailDiscount,
+        retailOthersCharge,
+        setRetailOthersCharge,
         customerName,
         setCustomerName,
         customerPhone,
@@ -806,7 +952,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toasts,
         showToast,
         removeToast,
-        expenses
+        expenses,
+
+        categories,
+        addCategory,
+        renameCategory,
+        deleteCategory
       }}
     >
       {children}

@@ -197,6 +197,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                     <span>- ₹{sale.discount.toFixed(2)}</span>
                   </div>
                 )}
+                {sale.othersCharge !== undefined && sale.othersCharge > 0 && (
+                  <div className="print-flex-between">
+                    <span>Other Charges:</span>
+                    <span>+ ₹{sale.othersCharge.toFixed(2)}</span>
+                  </div>
+                )}
                 {settings.showGstReceipt !== false && settings.gstin && (
                   <>
                     <div className="print-flex-between">
@@ -310,6 +316,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <div className="print-flex-between">
                 <span>Discount:</span>
                 <span>-₹{sale.discount.toFixed(2)}</span>
+              </div>
+            )}
+            {sale.othersCharge !== undefined && sale.othersCharge > 0 && (
+              <div className="print-flex-between">
+                <span>Other Charges:</span>
+                <span>+₹{sale.othersCharge.toFixed(2)}</span>
               </div>
             )}
             {settings.showGstReceipt !== false && settings.gstin && (
@@ -477,6 +489,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                     <span>- ₹{sale.discount.toFixed(2)}</span>
                   </div>
                 )}
+                {sale.othersCharge !== undefined && sale.othersCharge > 0 && (
+                  <div className="print-flex-between">
+                    <span>Other Charges:</span>
+                    <span>+ ₹{sale.othersCharge.toFixed(2)}</span>
+                  </div>
+                )}
                 {settings.showGstReceipt !== false && settings.gstin && (
                   <>
                     <div className="print-flex-between">
@@ -622,6 +640,12 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <div className="print-flex-between" style={{ color: 'red' }}>
               <span>Discount:</span>
               <span>-₹{sale.discount.toFixed(2)}</span>
+            </div>
+          )}
+          {sale.othersCharge !== undefined && sale.othersCharge > 0 && (
+            <div className="print-flex-between">
+              <span>Other Charges:</span>
+              <span>+₹{sale.othersCharge.toFixed(2)}</span>
             </div>
           )}
           <div className="print-flex-between" style={{ fontWeight: 'bold', fontSize: '12px', borderTop: '1px dashed black', paddingTop: '4px' }}>
