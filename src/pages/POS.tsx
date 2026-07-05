@@ -1269,7 +1269,7 @@ export const POS: React.FC = () => {
                       <th style={{ padding: '0.5rem', textAlign: 'left' }}>Mark</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center' }}>Unit</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center', width: '60px' }}>Bag</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'center' }}>Qty</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'center' }}>Weight</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right', width: '90px' }}>Price (₹)</th>
                       <th style={{ padding: '0.5rem', textAlign: 'right' }}>Total (₹)</th>
                       <th style={{ padding: '0.5rem', textAlign: 'center', width: '40px' }}></th>

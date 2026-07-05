@@ -220,21 +220,21 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                   <span>₹{sale.total.toFixed(2)}</span>
                 </div>
                 <div className="print-flex-between" style={{ fontWeight: 600 }}>
-                  <span>Received Amount:</span>
+                  <span>Received Amount / பெற்ற தொகை:</span>
                   <span>₹{receivedAmount.toFixed(2)}</span>
                 </div>
                 <div className="print-flex-between" style={{ fontWeight: 600 }}>
-                  <span>Bill Balance:</span>
+                  <span>Bill Balance / பில் மீதி:</span>
                   <span>₹{billBalance.toFixed(2)}</span>
                 </div>
                 {dealerForSale && (
                   <>
                     <div className="print-flex-between" style={{ fontWeight: 600 }}>
-                      <span>Old Balance:</span>
+                      <span>Old Balance / பழைய Balance:</span>
                       <span>₹{(balanceDue - billBalance).toFixed(2)}</span>
                     </div>
                     <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 700, borderTop: '1px dashed #dc2626', paddingTop: '0.35rem', marginTop: '0.1rem' }}>
-                      <span>Outstanding Due:</span>
+                      <span>Outstanding Due / மொத்த Balance:</span>
                       <span>₹{balanceDue.toFixed(2)}</span>
                     </div>
                   </>
@@ -335,21 +335,21 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <span>₹{sale.total.toFixed(2)}</span>
             </div>
             <div className="print-flex-between">
-              <span>RECEIVED AMT:</span>
+              <span>RECEIVED AMT / பெற்ற தொகை:</span>
               <span>₹{receivedAmount.toFixed(2)}</span>
             </div>
             <div className="print-flex-between">
-              <span>BILL BALANCE:</span>
+              <span>BILL BALANCE / பில் மீதி:</span>
               <span>₹{billBalance.toFixed(2)}</span>
             </div>
             {dealerForSale && (
               <>
                 <div className="print-flex-between">
-                  <span>OLD BALANCE:</span>
+                  <span>OLD BALANCE / பழைய Balance:</span>
                   <span>₹{(balanceDue - billBalance).toFixed(2)}</span>
                 </div>
                 <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 'bold', borderTop: '1px dashed #dc2626', paddingTop: '3px', marginTop: '1px' }}>
-                  <span>OUTSTANDING DUE:</span>
+                  <span>OUTSTANDING DUE / மொத்த Balance:</span>
                   <span>₹{balanceDue.toFixed(2)}</span>
                 </div>
               </>
@@ -512,21 +512,21 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                   <span>₹{sale.total.toFixed(2)}</span>
                 </div>
                 <div className="print-flex-between" style={{ fontWeight: 600 }}>
-                  <span>Received Amount:</span>
+                  <span>Received Amount / பெற்ற தொகை:</span>
                   <span>₹{receivedAmount.toFixed(2)}</span>
                 </div>
                 <div className="print-flex-between" style={{ fontWeight: 600 }}>
-                  <span>Bill Balance:</span>
+                  <span>Bill Balance / பில் மீதி:</span>
                   <span>₹{billBalance.toFixed(2)}</span>
                 </div>
                 {dealerForSale && (
                   <>
                     <div className="print-flex-between" style={{ fontSize: '0.75rem' }}>
-                      <span>Old Balance:</span>
+                      <span>Old Balance / பழைய Balance:</span>
                       <span>₹{(balanceDue - billBalance).toFixed(2)}</span>
                     </div>
                     <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 700, borderTop: '1px dashed #dc2626', paddingTop: '0.25rem', marginTop: '0.1rem', fontSize: '0.85rem' }}>
-                      <span>Outstanding Due:</span>
+                      <span>Outstanding Due / மொத்த Balance:</span>
                       <span>₹{balanceDue.toFixed(2)}</span>
                     </div>
                   </>
@@ -653,21 +653,21 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <span>₹{sale.total.toFixed(2)}</span>
           </div>
           <div className="print-flex-between">
-            <span>RECEIVED AMOUNT:</span>
+            <span>RECEIVED AMOUNT / பெற்ற தொகை:</span>
             <span>₹{receivedAmount.toFixed(2)}</span>
           </div>
           <div className="print-flex-between">
-            <span>BILL BALANCE:</span>
+            <span>BILL BALANCE / பில் மீதி:</span>
             <span>₹{billBalance.toFixed(2)}</span>
           </div>
           {dealerForSale && (
             <>
               <div className="print-flex-between" style={{ fontSize: '10px' }}>
-                <span>OLD BALANCE:</span>
+                <span>OLD BALANCE / பழைய Balance:</span>
                 <span>₹{(balanceDue - billBalance).toFixed(2)}</span>
               </div>
               <div className="print-flex-between" style={{ color: '#dc2626', fontWeight: 'bold', borderTop: '1px dashed #dc2626', paddingTop: '3px', marginTop: '1px' }}>
-                <span>OUTSTANDING DUE:</span>
+                <span>OUTSTANDING DUE / மொத்த Balance:</span>
                 <span>₹{balanceDue.toFixed(2)}</span>
               </div>
             </>
