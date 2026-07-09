@@ -62,6 +62,8 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
   const receivedAmount = (sale.paymentDetails?.cashAmount || 0) + (sale.paymentDetails?.upiAmount || 0) + (sale.paymentDetails?.cardAmount || 0);
   const billBalance = Math.max(0, sale.total - receivedAmount);
 
+  const [printCreditSlip, setPrintCreditSlip] = useState(sale.paymentMethod === 'Credit' || (!!sale.dealerId && billBalance > 0));
+
   const calculateTotalWeight = () => {
     return sale.items.reduce((sum, item) => sum + (item.weight || 0), 0);
   };
@@ -694,6 +696,241 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
     );
   };
 
+  const renderCreditSlipContent = (format: 'a4' | '3inch' | '4inch' | 'a5') => {
+    const dateFormatted = new Date(sale.date).toLocaleString();
+    if (!dealerForSale) return null;
+
+    const oldBalance = balanceDue - billBalance;
+
+    if (format === 'a4') {
+      return (
+        <div className="print-a4 print-page-break" style={{ fontFamily: 'var(--font-body)', background: '#fff', color: '#000' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, textTransform: 'uppercase' }}>{settings.shopName}</h2>
+            <h3 style={{ fontSize: '1.2rem', color: '#b91c1c', fontWeight: 700, marginTop: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Credit Acknowledgment & Statement</h3>
+            <p style={{ margin: '0.2rem 0', fontSize: '0.85rem' }}>Phone: {settings.phone}</p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '1.5rem', background: '#f9fafb', padding: '0.75rem', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+            <div>
+              <h4 style={{ fontWeight: 600, borderBottom: '1px solid #ddd', paddingBottom: '0.25rem', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#4b5563' }}>CUSTOMER DETAILS / வாடிக்கையாளர் விவரம்:</h4>
+              <p style={{ fontSize: '0.95rem', fontWeight: 600 }}>{sale.customerName}</p>
+              {sale.customerPhone && <p>Phone: {sale.customerPhone}</p>}
+            </div>
+            <div>
+              <h4 style={{ fontWeight: 600, borderBottom: '1px solid #ddd', paddingBottom: '0.25rem', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#4b5563' }}>TRANSACTION DETAILS / பரிவர்த்தனை விவரம்:</h4>
+              <p><strong>Invoice No:</strong> {sale.invoiceNo}</p>
+              <p><strong>Date:</strong> {dateFormatted}</p>
+              <p><strong>Method:</strong> {sale.paymentMethod} SALE</p>
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #d1d5db', borderRadius: '4px', overflow: 'hidden', marginBottom: '2rem' }}>
+            <div style={{ background: '#f3f4f6', padding: '10px 15px', fontWeight: 'bold', borderBottom: '1px solid #d1d5db', fontSize: '1rem' }}>
+              Ledger Account Summary / கணக்கு விவரம்
+            </div>
+            <div style={{ padding: '15px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem' }}>
+                <span>Old Dues / பழைய பாக்கி:</span>
+                <span>₹{oldBalance.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem' }}>
+                <span>Current Invoice Dues / இந்த பில் பாக்கி:</span>
+                <span>+ ₹{billBalance.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.25rem', fontWeight: 'bold', color: '#dc2626', borderTop: '2px double #d1d5db', paddingTop: '0.75rem', marginTop: '0.25rem' }}>
+                <span>Net Outstanding Balance / மொத்த பாக்கி:</span>
+                <span>₹{balanceDue.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '2rem', fontSize: '0.85rem', color: '#4b5563', lineHeight: '1.4' }}>
+            <p><strong>Declaration:</strong> I hereby acknowledge that the above statement is true and correct, and I agree to clear the net outstanding balance of <strong>₹{balanceDue.toFixed(2)}</strong> as per the agreed credit terms.</p>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5rem' }}>
+            <div style={{ width: '220px', textAlign: 'center' }}>
+              <div style={{ borderTop: '1px solid #333', paddingTop: '0.25rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                Customer Signature
+              </div>
+            </div>
+            <div style={{ width: '220px', textAlign: 'center' }}>
+              <div style={{ borderTop: '1px solid #333', paddingTop: '0.25rem', fontSize: '0.85rem', fontWeight: 600 }}>
+                Authorized Signatory
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (format === '3inch') {
+      return (
+        <div className="print-3inch print-page-break" style={{ fontFamily: 'Courier New', color: '#000', background: '#fff' }}>
+          <div className="print-text-center">
+            <h4 style={{ fontSize: '11px', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase' }}>*** CREDIT STATEMENT ***</h4>
+            <div style={{ fontSize: '9px', fontWeight: 'bold' }}>{settings.shopName}</div>
+            <div className="print-divider"></div>
+          </div>
+
+          <div style={{ fontSize: '9px', margin: '4px 0' }}>
+            <div>INV NO: {sale.invoiceNo}</div>
+            <div>DATE  : {dateFormatted}</div>
+            <div>CUST  : {sale.customerName}</div>
+            {sale.customerPhone && <div>PHONE : {sale.customerPhone}</div>}
+          </div>
+
+          <div className="print-divider"></div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '9px' }}>
+            <div className="print-flex-between">
+              <span>OLD BALANCE / பழைய:</span>
+              <span>₹{oldBalance.toFixed(2)}</span>
+            </div>
+            <div className="print-flex-between">
+              <span>CURRENT BILL / இந்த பில்:</span>
+              <span>+₹{billBalance.toFixed(2)}</span>
+            </div>
+            <div className="print-flex-between" style={{ fontWeight: 'bold', fontSize: '10px', borderTop: '1px dashed black', paddingTop: '4px', marginTop: '2px', color: '#000' }}>
+              <span>NEW OUTSTANDING / மொத்தம்:</span>
+              <span>₹{balanceDue.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div className="print-divider"></div>
+
+          <div style={{ fontSize: '8px', fontStyle: 'italic', marginTop: '10px', textAlign: 'center', lineHeight: '10px' }}>
+            I acknowledge the above balance is correct & payable.
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '35px', fontSize: '8px' }}>
+            <div style={{ width: '45%', borderTop: '1px solid black', paddingTop: '2px', textAlign: 'center' }}>
+              Cust. Sign
+            </div>
+            <div style={{ width: '45%', borderTop: '1px solid black', paddingTop: '2px', textAlign: 'center' }}>
+              Auth. Sign
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (format === 'a5') {
+      return (
+        <div className="print-a5 print-page-break" style={{ fontFamily: 'var(--font-body)', background: '#fff', color: '#000', padding: '10px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>{settings.shopName}</h3>
+            <h4 style={{ fontSize: '1rem', color: '#b91c1c', fontWeight: 700, margin: '0.2rem 0', textTransform: 'uppercase' }}>Credit Acknowledgment Slip</h4>
+            <p style={{ margin: '0.1rem 0', fontSize: '0.75rem' }}>Phone: {settings.phone}</p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem', background: '#f9fafb', padding: '0.4rem 0.6rem', borderRadius: '4px', border: '1px solid #e5e7eb', fontSize: '0.75rem' }}>
+            <div>
+              <p style={{ margin: '0.1rem 0' }}><strong>CUSTOMER:</strong> {sale.customerName}</p>
+              {sale.customerPhone && <p style={{ margin: '0.1rem 0' }}><strong>Phone:</strong> {sale.customerPhone}</p>}
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ margin: '0.1rem 0' }}><strong>Invoice No:</strong> {sale.invoiceNo}</p>
+              <p style={{ margin: '0.1rem 0' }}><strong>Date:</strong> {dateFormatted}</p>
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #d1d5db', borderRadius: '4px', overflow: 'hidden', marginBottom: '1.5rem', fontSize: '0.75rem' }}>
+            <div style={{ background: '#f3f4f6', padding: '6px 12px', fontWeight: 'bold', borderBottom: '1px solid #d1d5db' }}>
+              Ledger Account Statement
+            </div>
+            <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Old Dues / பழைய பாக்கி:</span>
+                <span>₹{oldBalance.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Current Bill Dues / இந்த பில் பாக்கி:</span>
+                <span>+ ₹{billBalance.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#dc2626', borderTop: '1px dashed #d1d5db', paddingTop: '0.4rem', marginTop: '0.1rem' }}>
+                <span>Net Outstanding Balance / மொத்த பாக்கி:</span>
+                <span>₹{balanceDue.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '1rem', fontSize: '0.7rem', color: '#4b5563', lineHeight: '1.3' }}>
+            <p><strong>Declaration:</strong> I acknowledge that the outstanding balance of <strong>₹{balanceDue.toFixed(2)}</strong> is correct and payable.</p>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3.5rem', fontSize: '0.7rem' }}>
+            <div style={{ width: '130px', textAlign: 'center' }}>
+              <div style={{ borderTop: '1px solid #333', paddingTop: '0.1rem', fontWeight: 600 }}>
+                Customer Sign
+              </div>
+            </div>
+            <div style={{ width: '130px', textAlign: 'center' }}>
+              <div style={{ borderTop: '1px solid #333', paddingTop: '0.1rem', fontWeight: 600 }}>
+                Authorized Sign
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 4inch thermal format
+    return (
+      <div className="print-4inch print-page-break" style={{ fontFamily: 'Courier New', color: '#000', background: '#fff' }}>
+        <div className="print-text-center">
+          <h4 style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 4px 0', textTransform: 'uppercase' }}>*** CREDIT ACKNOWLEDGMENT SLIP ***</h4>
+          <div style={{ fontSize: '10px', fontWeight: 'bold' }}>{settings.shopName}</div>
+          <div className="print-divider"></div>
+        </div>
+
+        <div style={{ fontSize: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', margin: '4px 0' }}>
+          <div>
+            <div>INV NO: {sale.invoiceNo}</div>
+            <div>DATE  : {dateFormatted}</div>
+          </div>
+          <div className="print-text-right">
+            <div>CUSTOMER: {sale.customerName}</div>
+            {sale.customerPhone && <div>PHONE   : {sale.customerPhone}</div>}
+          </div>
+        </div>
+
+        <div className="print-divider"></div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '10px' }}>
+          <div className="print-flex-between">
+            <span>OLD OUTSTANDING / பழைய பாக்கி:</span>
+            <span>₹{oldBalance.toFixed(2)}</span>
+          </div>
+          <div className="print-flex-between">
+            <span>CURRENT BILL DUES / இந்த பில் பாக்கி:</span>
+            <span>+₹{billBalance.toFixed(2)}</span>
+          </div>
+          <div className="print-flex-between" style={{ fontWeight: 'bold', fontSize: '11px', borderTop: '1px dashed black', paddingTop: '4px', marginTop: '2px' }}>
+            <span>NEW OUTSTANDING / மொத்த பாக்கி:</span>
+            <span>₹{balanceDue.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="print-divider"></div>
+
+        <div style={{ fontSize: '9px', fontStyle: 'italic', marginTop: '10px', textAlign: 'center' }}>
+          I hereby acknowledge that the above statement is correct and agree to clear the dues.
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px', fontSize: '9px' }}>
+          <div style={{ width: '40%', borderTop: '1px solid black', paddingTop: '2px', textAlign: 'center' }}>
+            Customer Sign
+          </div>
+          <div style={{ width: '40%', borderTop: '1px solid black', paddingTop: '2px', textAlign: 'center' }}>
+            Authorized Sign
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="modal-overlay">
@@ -747,6 +984,22 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
                 </button>
               </div>
 
+              {dealerForSale && (
+                <>
+                  <hr style={{ borderColor: 'var(--border-color)', margin: '0.5rem 0' }} />
+                  <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Credit Options</h4>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={printCreditSlip}
+                      onChange={(e) => setPrintCreditSlip(e.target.checked)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span>Print Credit Slip</span>
+                  </label>
+                </>
+              )}
+
               <hr style={{ borderColor: 'var(--border-color)', margin: '0.5rem 0' }} />
 
               <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Actions</h4>
@@ -771,6 +1024,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <div className="glass-panel" style={{ background: '#fff', borderRadius: 'var(--border-radius-md)', padding: '1rem', height: '60vh', overflowY: 'auto', display: 'flex', justifyContent: 'center', border: '1px solid var(--border-color)', boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.1)' }}>
               <div style={{ transform: 'scale(0.95)', transformOrigin: 'top center', width: '100%' }}>
                 {renderInvoiceContent(printFormat)}
+                {printCreditSlip && renderCreditSlipContent(printFormat)}
               </div>
             </div>
           </div>
@@ -787,6 +1041,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
       {createPortal(
         <div id="print-area-root">
           {renderInvoiceContent(printFormat)}
+          {printCreditSlip && renderCreditSlipContent(printFormat)}
         </div>,
         document.body
       )}
