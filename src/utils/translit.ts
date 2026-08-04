@@ -432,3 +432,20 @@ export const transliterateText = (text: string): string => {
   
   return result.join('');
 };
+
+export const getTamilDay = (dateInput?: string | Date | number): string => {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const tamilDays = [
+    'ஞாயிற்றுக்கிழமை', // Sunday (0)
+    'திங்கட்கிழமை',   // Monday (1)
+    'செவ்வாய்க்கிழமை', // Tuesday (2)
+    'புதன்கிழமை',     // Wednesday (3)
+    'வியாழக்கிழமை',   // Thursday (4)
+    'வெள்ளிக்கிழமை',   // Friday (5)
+    'சனிக்கிழமை'      // Saturday (6)
+  ];
+  return tamilDays[d.getDay()];
+};
+

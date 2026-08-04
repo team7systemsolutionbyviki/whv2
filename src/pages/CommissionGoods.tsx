@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { DB, Supplier, SupplierPayment, PattiRecord, CommissionPurchase, CommissionPurchaseItem } from '../utils/db';
+import { getTamilDay } from '../utils/translit';
 import { 
   Plus, 
   Search, 
@@ -645,7 +646,7 @@ export const CommissionGoods: React.FC = () => {
         ` : ''}
 
         <div style="margin-top: 40px; display: flex; justify-content: space-between; font-size: 11px; color: #555;">
-          <div>Generated on: ${new Date().toLocaleString()}</div>
+          <div>Generated on: ${new Date().toLocaleString()} (${getTamilDay(new Date())})</div>
           <div style="width: 180px; text-align: center; border-top: 1px solid #000; padding-top: 4px;">Authorized Signatory</div>
         </div>
       </body>
@@ -731,7 +732,7 @@ export const CommissionGoods: React.FC = () => {
           </tfoot>
         </table>
         <div style="margin-top:32px;display:flex;justify-content:space-between;">
-          <div style="font-size:11px;color:#6b7280;">Printed on: ${new Date().toLocaleString()}</div>
+          <div style="font-size:11px;color:#6b7280;">Printed on: ${new Date().toLocaleString()} (${getTamilDay(new Date())})</div>
           <div style="width:180px;text-align:center;">
             <div style="border-top:1px solid #333;padding-top:4px;font-size:11px;">Authorized Signatory</div>
           </div>

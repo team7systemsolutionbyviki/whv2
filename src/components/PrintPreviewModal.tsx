@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
 import { Sale, Product, DB } from '../utils/db';
 import { X, Printer, Share2, FileText, Smartphone } from 'lucide-react';
+import { getTamilDay } from '../utils/translit';
 
 interface PrintPreviewModalProps {
   sale: Sale;
@@ -84,6 +85,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
   // Print layout JSX for both on-screen and print portal
   const renderInvoiceContent = (format: 'a4' | '3inch' | '4inch' | 'a5') => {
     const dateFormatted = new Date(sale.date).toLocaleString();
+    const tamilDay = getTamilDay(sale.date);
 
     if (format === 'a4') {
       return (
@@ -100,6 +102,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <h3 style={{ fontSize: '1.25rem', color: 'var(--primary)', fontWeight: 700, marginBottom: '0.5rem' }}>TAX INVOICE</h3>
               <p><strong>Invoice No:</strong> {sale.invoiceNo}</p>
               <p><strong>Date:</strong> {dateFormatted}</p>
+              <p><strong>Day / கிழமை:</strong> {tamilDay}</p>
               <p><strong>Type:</strong> {sale.type.toUpperCase()} SALE</p>
             </div>
           </div>
@@ -268,6 +271,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
           <div style={{ fontSize: '9px', margin: '4px 0' }}>
             <div>INV NO: {sale.invoiceNo}</div>
             <div>DATE  : {dateFormatted}</div>
+            <div>DAY   : {tamilDay}</div>
             <div>CUSTOMER: {sale.customerName}</div>
             {sale.customerPhone && <div>PHONE   : {sale.customerPhone}</div>}
           </div>
@@ -396,6 +400,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <h4 style={{ fontSize: '0.95rem', color: 'var(--primary)', fontWeight: 700, margin: '0 0 0.2rem 0' }}>TAX INVOICE</h4>
               <p style={{ margin: '0.1rem 0', fontSize: '0.75rem' }}><strong>Invoice No:</strong> {sale.invoiceNo}</p>
               <p style={{ margin: '0.1rem 0', fontSize: '0.75rem' }}><strong>Date:</strong> {dateFormatted}</p>
+              <p style={{ margin: '0.1rem 0', fontSize: '0.75rem' }}><strong>Day / கிழமை:</strong> {tamilDay}</p>
             </div>
           </div>
 
@@ -563,6 +568,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
           <div>
             <div>INV NO: {sale.invoiceNo}</div>
             <div>DATE  : {dateFormatted}</div>
+            <div>DAY   : {tamilDay}</div>
             <div>TYPE  : {sale.type.toUpperCase()}</div>
           </div>
           <div className="print-text-right">
@@ -698,6 +704,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
 
   const renderCreditSlipContent = (format: 'a4' | '3inch' | '4inch' | 'a5') => {
     const dateFormatted = new Date(sale.date).toLocaleString();
+    const tamilDay = getTamilDay(sale.date);
     if (!dealerForSale) return null;
 
     const oldBalance = balanceDue - billBalance;
@@ -721,6 +728,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
               <h4 style={{ fontWeight: 600, borderBottom: '1px solid #ddd', paddingBottom: '0.25rem', marginBottom: '0.5rem', fontSize: '0.85rem', color: '#4b5563' }}>TRANSACTION DETAILS / பரிவர்த்தனை விவரம்:</h4>
               <p><strong>Invoice No:</strong> {sale.invoiceNo}</p>
               <p><strong>Date:</strong> {dateFormatted}</p>
+              <p><strong>Day / கிழமை:</strong> {tamilDay}</p>
               <p><strong>Method:</strong> {sale.paymentMethod} SALE</p>
             </div>
           </div>
@@ -777,6 +785,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
           <div style={{ fontSize: '9px', margin: '4px 0' }}>
             <div>INV NO: {sale.invoiceNo}</div>
             <div>DATE  : {dateFormatted}</div>
+            <div>DAY   : {tamilDay}</div>
             <div>CUST  : {sale.customerName}</div>
             {sale.customerPhone && <div>PHONE : {sale.customerPhone}</div>}
           </div>
@@ -833,6 +842,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
             <div style={{ textAlign: 'right' }}>
               <p style={{ margin: '0.1rem 0' }}><strong>Invoice No:</strong> {sale.invoiceNo}</p>
               <p style={{ margin: '0.1rem 0' }}><strong>Date:</strong> {dateFormatted}</p>
+              <p style={{ margin: '0.1rem 0' }}><strong>Day / கிழமை:</strong> {tamilDay}</p>
             </div>
           </div>
 
@@ -889,6 +899,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({ sale, onCl
           <div>
             <div>INV NO: {sale.invoiceNo}</div>
             <div>DATE  : {dateFormatted}</div>
+            <div>DAY   : {tamilDay}</div>
           </div>
           <div className="print-text-right">
             <div>CUSTOMER: {sale.customerName}</div>

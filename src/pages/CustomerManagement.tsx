@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { DB, Dealer, DealerPayment } from '../utils/db';
+import { getTamilDay } from '../utils/translit';
+
 import {
   UserCheck,
   Plus,
@@ -371,7 +373,11 @@ export const CustomerManagement: React.FC = () => {
           </tr>
           <tr>
             <td class="bold">Date & Time:</td>
-            <td>\${formatDateDDMMYYYY(payment.date)} \${new Date(payment.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+            <td>${formatDateDDMMYYYY(payment.date)} ${new Date(payment.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+          </tr>
+          <tr>
+            <td class="bold">Day / கிழமை:</td>
+            <td class="bold">${getTamilDay(payment.date)}</td>
           </tr>
           <tr>
             <td class="bold">Customer:</td>
@@ -1025,7 +1031,7 @@ export const CustomerManagement: React.FC = () => {
           <div class="divider"></div>
           <div class="bold" style="font-size: 13px; margin-top: 4px; text-transform: uppercase;">COLLECTION PRINT</div>
           <p style="font-size: 11px; margin: 2px 0;">Category: <strong>${activeCategory}</strong></p>
-          <p style="font-size: 10px; margin: 2px 0;">Date: ${new Date().toLocaleString()}</p>
+          <p style="font-size: 10px; margin: 2px 0;">Date: ${new Date().toLocaleString()} (${getTamilDay(new Date())})</p>
         </div>
         
         <div class="divider"></div>

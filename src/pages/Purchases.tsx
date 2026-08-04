@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
 import { DB, Product, Purchase, Supplier, PurchaseItem, ProductVariation } from '../utils/db';
+import { getTamilDay } from '../utils/translit';
 import { 
   Truck, 
   Plus, 
@@ -2156,6 +2157,7 @@ export const Purchases: React.FC = () => {
                       <h3 style={{ fontSize: '1.1rem', color: 'indigo', fontWeight: 700, margin: '0 0 0.4rem 0' }}>PURCHASE LEDGER</h3>
                       <p style={{ margin: '0.25rem 0' }}><strong>Invoice No:</strong> {selectedPurchase.invoiceNo}</p>
                       <p style={{ margin: '0.25rem 0' }}><strong>Date:</strong> {new Date(selectedPurchase.date).toLocaleString()}</p>
+                      <p style={{ margin: '0.25rem 0' }}><strong>Day / கிழமை:</strong> {getTamilDay(selectedPurchase.date)}</p>
                       <p style={{ margin: '0.25rem 0' }}><strong>Status:</strong> {selectedPurchase.paymentStatus.toUpperCase()}</p>
                     </div>
                   </div>
@@ -2265,6 +2267,7 @@ export const Purchases: React.FC = () => {
               <h3 style={{ fontSize: '16px', fontWeight: 'bold', margin: '0 0 4px 0' }}>PURCHASE LEDGER</h3>
               <p style={{ margin: '2px 0', fontSize: '11px' }}>INV NO: {selectedPurchase.invoiceNo}</p>
               <p style={{ margin: '2px 0', fontSize: '11px' }}>DATE: {new Date(selectedPurchase.date).toLocaleString()}</p>
+              <p style={{ margin: '2px 0', fontSize: '11px' }}>DAY : {getTamilDay(selectedPurchase.date)}</p>
               <p style={{ margin: '2px 0', fontSize: '11px' }}>STATUS: {selectedPurchase.paymentStatus.toUpperCase()}</p>
             </div>
           </div>
